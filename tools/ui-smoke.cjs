@@ -448,6 +448,56 @@ ok('★ 总账的告急带按钮真的能换屏（R1 回归锁）', () => {
   if (D.viewHtml.includes('身价')) throw new Error('点了告急带却没离开总账（R1 复发）');
 });
 
+console.log('\n2.12) 一级屏「信匣｜邮箱」（docs/20 §7 第一批第 2 项）');
+ok('顶栏信匣章能进信匣，没信时是空态', () => {
+  D.start('grow', 'GG-UIMAIL', 8);
+  click({ root: 'mail' });
+  D.render();
+  const h = D.viewHtml;
+  if (!h.includes('信匣')) throw new Error('没进信匣：' + h.slice(0, 90));
+  if (!h.includes('还没有人来信')) throw new Error('初局信匣不是空态：' + h.slice(0, 120));
+  if (h.includes('undefined') || h.includes('NaN')) throw new Error('信匣里出现 undefined/NaN');
+  /* 出路：信匣不是死胡同 —— 从信匣必须能回总账。
+     这条是被真机截图遯出来的：面包屑当时只分两档，进信匣后左上角变成
+     不可点的 <b>🏠 总账</b>，除了刷新页面根本出不去。 */
+  click({ root: 'ledger' });
+  D.render();
+  if (!D.viewHtml.includes('身价')) throw new Error('从信匣回不到总账（死胡同）');
+  /* ⚠ 收尾：ui.root 是**全局 UI 状态**，会跨测试泄漏。
+     我第一版就漏了这步 → 后面的 2.9（六公司×七视图查 NaN）在“农场页”上
+     找不到扩地按钮，直接报「测试前提不成立」而变红。
+     教训：测试结束后必须把自己的世界还原，不能把状态留给下一条测试。 */
+  click({ enter: 'grow' });
+});
+/* ⚠ 信必须是**引擎自己寄的**，不能手改 s.inbox 造假数据 ——
+   那样测的是我塞进去的对象，而不是“引擎真的会寄信”这条链路。
+   所以这里的造法：把现金压负 → 走一次引擎动作触发 _flush → _mailTick 派生那封信。 */
+ok('有信时列表出来、点开即已读、能返回', () => {
+  D.start('grow', 'GG-UIMAIL', 8);
+  D.human.cash = -1;
+  click({ act: 'harvestAll' });          /* 任何走引擎的动作都会 _flush → _mailTick */
+  D.render();
+  click({ root: 'mail' });
+  D.render();
+  const list = D.viewHtml;
+  if (!list.includes('钱庄')) throw new Error('引擎没派生“现金为负”那封信：' + list.slice(0, 160));
+  if (list.includes('还没有人来信')) throw new Error('有信却还显示空态');
+  /* 进入详情 */
+  click({ mail: '1' });
+  D.render();
+  const det = D.viewHtml;
+  if (!det.includes('你手上的现金已经是负的')) {
+    throw new Error('详情页没拿到信的正文：' + det.slice(0, 160));
+  }
+  if (!det.includes('← 信匣')) throw new Error('详情页没有返回入口');
+  
+  /* 返回列表 */
+  click({ mailback: '1' });
+  D.render();
+  if (!D.viewHtml.includes('信匣')) throw new Error('返回后没回到信匣');
+  click({ enter: 'grow' });   /* 同上：还原成二级，别把 ui.root='mail' 漏给后面的测试 */
+});
+
 console.log('\n2.9) 回归：界面上不许出现 NaN（2026-10-08 真机肉眼发现「扩一块地 (NaNG)」）');
 /* 为什么值得全量扫：这类 bug 在 headless 里“不报错、不抛异常、也不缺 DOM”，
    只是把 undefined 算成了 NaN 写在按钮文案里 —— 只有盯着屏幕才看得见。

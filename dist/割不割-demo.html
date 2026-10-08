@@ -1031,9 +1031,47 @@ body{
 .alert{display:block;width:100%;text-align:left;font-size:12.5px;padding:8px 10px;border-radius:8px;
   border:1px solid rgba(180,40,40,.35);background:rgba(180,40,40,.07);color:inherit}
 .firms{display:flex;flex-direction:column;gap:8px}
-.firm{padding:10px 12px;border-radius:10px;background:var(--paper-hi)}
+/* 一行两栏：左文字 / 右按钮（2026-10-08 玩家要求，原为按钮独占第三行）。
+   ⚠ .fmain 的 min-width:0 不能删：flex 子项默认 min-width:auto，
+     公司名一长就会把按钮顶出卡片，而不是自己缩。 */
+.firm{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;background:var(--paper-hi)}
+.firm .fmain{flex:1 1 auto;min-width:0}
+.firm .fact{flex:0 0 auto}
+/* 按钮不折行：参股那档文案更长（只参股，不下手），窄屏下会被拆成两行 */
+.firm .fact .btn{white-space:nowrap}
+
+/* ---------- J2. 信匣（一级屏，docs/20 §2.1）---------- */
+/* 顶栏常驻印章 + 未读角标。
+   ⚠ 印章**不能用深底**：顶栏是米色纸，深色容器会让内部的 var(--ink*) 变近白 → 文字隐形
+     （这个坑本项目已犯过两次：#feed 与 .crop）。所以这里只用 currentColor + 透明度。 */
+.seal{position:relative;display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;margin-left:6px;padding:0;border:1px solid currentColor;border-radius:8px;background:transparent;color:inherit;font-size:14px;line-height:1;opacity:.45;vertical-align:middle;cursor:pointer}
+.seal.has{opacity:1;border-color:#b3261e;color:#b3261e}
+.sbadge{position:absolute;top:-6px;right:-6px;min-width:15px;height:15px;padding:0 3px;border-radius:8px;background:#b3261e;color:#fff;font-size:10px;line-height:15px;text-align:center}
+.ssoon{margin-left:4px;font-size:10.5px;font-weight:700;color:#b3261e;vertical-align:middle}
+/* 会话列表：docs/20 §4「约 10 行，无需分页」——所以每行压到 ~46px。 */
+.mrows{display:flex;flex-direction:column;gap:2px}
+.mrow{display:flex;align-items:center;gap:9px;width:100%;padding:9px 4px;border:0;border-bottom:1px solid rgba(0,0,0,.07);background:transparent;text-align:left;color:inherit;cursor:pointer}
+.mrow.unread{background:rgba(179,38,30,.05)}
+.mava{flex:0 0 auto;width:26px;height:26px;border-radius:50%;background:rgba(0,0,0,.06);font-size:13px;line-height:26px;text-align:center}
+.mtxt{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:2px}
+.mfrom{display:flex;align-items:center;gap:5px;font-size:12.5px;font-weight:700}
+.mdot{width:6px;height:6px;border-radius:50%;background:#b3261e}
+.mdl{margin-left:auto;font-size:10.5px;font-weight:700;color:#b3261e}
+.mdl.over{opacity:.5}
+.msub{font-size:11.5px;opacity:.72;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mtime{flex:0 0 auto;font-size:10.5px;opacity:.5}
+.empty{padding:26px 12px;text-align:center;font-size:12.5px;line-height:1.8;opacity:.6}
+/* 信件详情 */
+.back{margin:0 0 10px;padding:6px 10px;border:1px solid currentColor;border-radius:8px;background:transparent;color:inherit;font-size:12px;opacity:.7;cursor:pointer}
+.md{padding:12px;border-radius:10px;background:var(--paper-hi)}
+.mdfrom{display:flex;align-items:center;justify-content:space-between;font-size:12.5px;font-weight:700}
+.mdtime{font-size:10.5px;font-weight:400;opacity:.5}
+.mdsub{margin-top:6px;font-size:15px;font-weight:700}
+.mdlg{margin-top:6px;font-size:11.5px;font-weight:700;color:#b3261e}
+.mdbody{margin-top:9px;font-size:13px;line-height:1.85;white-space:pre-wrap;opacity:.85}
 .firm .ft{display:flex;align-items:center;gap:6px;font-size:14px;font-weight:700}
-.firm .fl{display:flex;align-items:center;gap:6px;margin:5px 0 7px;font-size:11.5px;opacity:.75}
+/* 家底那行是本栏最后一行，只留上边距（原来还带 7px 下边距，是按钮另起一行时的旧间距） */
+.firm .fl{display:flex;align-items:center;gap:6px;margin-top:5px;font-size:11.5px;opacity:.75}
 .lamp{display:inline-block;flex:0 0 auto;width:9px;height:9px;border-radius:50%}
 .lamp.ok{background:#4a8f4a}
 .lamp.mid{background:#c8a03a}
@@ -1495,6 +1533,9 @@ Game.prototype._init = function (opts) {
     countdown: null,
     lotInterventions: [],
     feed: [], feedSeq: 0,
+    /* 信匣（docs/20 §2.1）：只装**指名寄给人的信**，与 feed（公共流水）分开。
+       旧存档没有这个键 → 引擎与 UI 一律用 Array.isArray 兜底，不做迁移。 */
+    inbox: [], inboxSeq: 0,
     stats: { injections: 0, trades: 0, monopolist: null },
     seq: 0,
   };
@@ -3561,7 +3602,90 @@ Game.prototype._log = function (kind, text, pid) {
   this.s.feed.push({ i: ++this.s.feedSeq, t: Math.round(this.s.t), kind, text, pid: pid || null });
   if (this.s.feed.length > 400) this.s.feed.shift();
 };
+/* ---- 3.9b 信匣（docs/20 §2.1 信匣｜邮箱 / docs/19 §4.6 治理入口）----------------
+   信 = **指名寄给你**的东西（合作请求 / 收购通知 / 风声 / 决议通知），留未读角标；
+   流水条（feed）= **外面的动静**（谁买卖了什么、价格动了），不留未读。
+   ⚠ 这个分工是 docs/20 §2.1 定的：告急带与信匣角标把“必须回来处理”钉在视线里，
+     流水条是背景音。混成一个会同时污染两边。
+   ⚠ 旧存档没有 inbox / inboxSeq，全部当场兜底，不做迁移（迁移守卫会挂）。 */
+Game.prototype._mail = function (pid, kind, from, subject, body, opts) {
+  const o = opts || {};
+  if (!Array.isArray(this.s.inbox)) this.s.inbox = [];
+  if (typeof this.s.inboxSeq !== 'number') this.s.inboxSeq = 0;
+  const m = {
+    i: ++this.s.inboxSeq, t: Math.round(this.s.t), to: pid,
+    kind, from, subject, body: body || '',
+    read: false,
+    key: o.key || null,                     /* 去重键（派生式信件必需，见 _mailTick） */
+    deadlineT: typeof o.deadlineT === 'number' ? o.deadlineT : null,
+    actions: o.actions || null,             /* 留给票决的三按钮（赞成/反对/弃权） */
+  };
+  this.s.inbox.push(m);
+  if (this.s.inbox.length > 200) this.s.inbox.shift();
+  if (!o.silent) this._log('mail', '✉ ' + from + ' 来信：' + subject, pid);
+  return m;
+};
+
+/* 从**已有状态**派生该寄的信。
+   ⚠ 为什么不直接在各系统的事件点上插一行 _mail：
+     ① 事件点散在 04 / 05 / 09 / 11 / 15 五个 part，插一行就要动五处、逐个重对锚点；
+     ② 事件点是“发生的那一瞬”，而信是“**要你处理的事**” —— 同一件事会在状态里
+        持续成立（拍卖进行中、现金为负、有人在囤货），派生天然覆盖
+        “我读档回来时它还在”，插点做不到。
+   ⚠ 必须幂等：_flush 每次 act / tick 都跑，靠 key 去重；否则一场拍卖能寄出几百封。
+   ⚠ 本批只覆盖**引擎已存在**的信号。NPC 提案（合作请求 / 收购通知 / 决议）
+     需要决议数据模型，是下一刀 —— 这里**不伪造**。 */
+Game.prototype._mailTick = function () {
+  const s = this.s;
+  if (!s || !Array.isArray(s.players)) return;
+  if (!Array.isArray(s.inbox)) s.inbox = [];
+  const me = s.players.find(p => p.id === s.humanId);
+  if (!me) return;
+  const has = k => s.inbox.some(m => m.key === k);
+  const post = (key, kind, from, subject, body, opts) => {
+    if (has(key)) return;
+    this._mail(me.id, kind, from, subject, body, Object.assign({ key }, opts || {}));
+  };
+
+  /* ① 拍卖会进行中 —— 有时限，错过就没了，所以是最该寄的一封 */
+  const a = s.auction;
+  if (a && a.phase !== 'done') {
+    const end = a.phase === 'sealed' ? a.sealedEndT : a.openEndT;
+    post('auction:' + s.auctionCount, 'deal', '拍卖行', '开槌了，场上有货',
+      end ? '现在能出价，剩 ' + Math.max(0, Math.round(end - s.t)) + ' 秒截止。过了这一场，下一场不知道什么时候。' :
+            '现在能出价，抓紧。',
+      { deadlineT: end || null });
+  }
+
+  /* ② 欠的账快赶上家底（与 08-chrome 的 warnBox、总账的健康灯同一杆标尺 × 1.5）*/
+  let sheet = null;
+  try { sheet = this.consolidated(me); } catch (e) { sheet = null; }
+  if (sheet) {
+    if (sheet.debt > 0 && sheet.nav < sheet.debt * BAL.maintRatio * 1.5) {
+      post('maint', 'system', '钱庄', '你欠的账快赶上家底了',
+        '再往下走，债主可能会上门拿地、拿货、拿公司抵债。先去“钱庄”把钱还上或把货卖掉。');
+    }
+  }
+
+  /* ③ 现金为负（追保窗口已经开了）*/
+  if (me.cash < 0) {
+    post('cashneg', 'system', '钱庄', '你手上的现金已经是负的',
+      '现金为负时会被记债。卖掉点货，或者去“钱庄”借一笔把洞堵上。');
+  }
+
+  /* ④ 有人在囤某种货（垄断倒计时）—— 风声，不是命令，所以写得像传闻 */
+  const cd = s.countdown;
+  if (cd && cd.crop && s.crops[cd.crop]) {
+    post('mono:' + s.auctionCount + ':' + cd.crop, 'rumor', '市场上的风声',
+      '有人在扫 ' + s.crops[cd.crop].name,
+      '市面上开始有人大量收 ' + s.crops[cd.crop].name + '，价格已经在动了。要不要跟着做，你自己定。');
+  }
+};
+
 Game.prototype._flush = function () {
+  /* 派生式信件的唯一入口。放在 listeners 之前：这样订阅者（UI）拿到的 s
+     已经包含本帧新到的信，不会出现“预览图有信、信匣里没有”的错位。 */
+  this._mailTick();
   for (const fn of this.listeners) fn(this.s);
 };
 
@@ -4225,11 +4349,20 @@ function renderTop() {
      ⚠ crumb 必须走事件委托（data-root），不能绑 onclick：
        #clock 每 120ms 被重写一次，绑在节点上的 handler 会跟着节点一起销毁 ——
        那就是“按钮不灵、要点好几下”那个老坑。 */
-  const crumb = ui.root
-    ? '<b class="crumb on">🏠 总账</b>'
-    : '<button class="crumb" data-root="1">← 集团</button>';
+  /* 面包屑（docs/20 §2.3）：左上角恒有“回上一层”的路。
+     ⚠ 一级屏从布尔变模式串之后，这里必须**按模式分档**：
+       原来只有“ui.root 假=二级 / 真=总账”两档，于是进了信匣之后左上角
+       变成不可点的 <b>🏠 总账</b> —— 既写错了“你现在在哪”，又**没有出路**
+       （信匣成了死胡同，只能刷新页面逃出来）。2026-10-08 真机截图看出来的。
+     ⚠ 二级那一档的 data-root 从 "1" 改成 "ledger"：两个值都能用（分派里
+       非 'mail' 一律当作 'ledger'），但写明白才不会让下一个人以为是随便填的。 */
+  const crumb = !ui.root
+    ? '<button class="crumb" data-root="ledger">← 集团</button>'
+    : (ui.root === 'mail'
+      ? '<button class="crumb" data-root="ledger">← 总账</button>'
+      : '<b class="crumb on">🏠 总账</b>');
   $('#clock').innerHTML = crumb + '第 <b>' + dayOf(s.t) + '</b> 天 <b>' + hhmm(s.t) + '</b>' +
-    (ui.root ? '' : ' · ' + esc(HUMAN.corpName));
+    (ui.root ? '' : ' · ' + esc(HUMAN.corpName)) + mailSeal();
   $('#navbig').innerHTML = fmt(nav) + '<small>G</small>';
   const invV = G.inventoryValue(HUMAN), debt = HUMAN.debt + G.shortLiability(HUMAN);
   /* 四个指标压进一行：净资产在左（大字号），现金/库存/欠款在右。
@@ -5042,6 +5175,11 @@ function ledgerBelt() {
     const end = a.phase === 'sealed' ? a.sealedEndT : a.openEndT;
     out.push('<button class="alert" data-view="auction">⚠ 拍卖会进行中，剩 ' + secLeftTxt(end - G.s.t) + '</button>');
   }
+  /* 收尾：待读的信也缀在告急带尾部（docs/20 §2.1 把“告急带 → 信匣”定成一条路）。
+     没有这行，信匣就只能靠顶栏那颗小印章发现 —— 新手根本不会去点。
+     ⚠ 走 data-root（一级屏切换），不能用 data-view：后者会把 ui.root 复位成二级。 */
+  const un = mailUnread();
+  if (un) out.push('<button class="alert" data-root="mail">✉ ' + un + ' 封没读的信</button>');
   return out;
 }
 
@@ -5108,14 +5246,23 @@ function viewLedger() {
     '<div class="ct"><h3>手里的公司</h3><span class="sub">共 ' + book.length + ' 家' +
       (held ? '（参股 ' + held + ' 家）' : '') + '</span></div>' +
     '<div class="firms">' + book.map(r =>
+      /* 卡内布局：左边文字（公司名 + 状态章 + 持股/家底），右边动作按钮。
+         ⚠ 原来是「文字两行 + 按钮独占第三行」，卡片被撑成三行、按钮吊在左下角；
+           2026-10-08 玩家要求改用左右分布 —— 卡片矮一截，也不用再往下扫一眼找按钮。
+         ⚠ 两层包装（.fmain / .fact）是必需的：只给按钮 float/absolute 的话，
+           公司名一长就会压到按钮底下（.fmain 的 min-width:0 才是那个“允许被挤”的开关）。 */
       '<div class="firm">' +
-        '<div class="ft">' + esc(r.name) + '<span class="tag">' +
-          (r.control >= 0.5 ? '控股' : '参股') + '</span></div>' +
-        '<div class="fl"><span class="lamp ' + r.lamp + '"></span>持股 ' +
-          Math.round(r.stake * 100) + '% · 家底 ' + fmt(r.nav) + ' G</div>' +
-        (r.control >= 0.5
-          ? '<button class="btn p" data-enter="' + r.id + '">进入经营</button>'
-          : '<button class="btn" disabled>只参股，不下手</button>') +
+        '<div class="fmain">' +
+          '<div class="ft">' + esc(r.name) + '<span class="tag">' +
+            (r.control >= 0.5 ? '控股' : '参股') + '</span></div>' +
+          '<div class="fl"><span class="lamp ' + r.lamp + '"></span>持股 ' +
+            Math.round(r.stake * 100) + '% · 家底 ' + fmt(r.nav) + ' G</div>' +
+        '</div>' +
+        '<div class="fact">' +
+          (r.control >= 0.5
+            ? '<button class="btn p" data-enter="' + r.id + '">进入经营</button>'
+            : '<button class="btn" disabled>只参股，不下手</button>') +
+        '</div>' +
       '</div>').join('') + '</div>' +
 
   '</div>';
@@ -5126,6 +5273,126 @@ function viewLedger() {
      docs/20 §2.1 对 Z3 的定义是「组合总浮盈 + 今日/本季派红」——
      这两项都要等派红与行情落地才有数据，届时再画才是真信息。 */
 }
+/* 一级 · 信匣｜邮箱（docs/20 §2.1「信匣｜邮箱·会话列表」/ §7 第一批第 2 项）。
+ *
+ * 屏幕形态：会话式列表（发件人 · 摘要 · 时间 · 未读点 · [倒计时角标]）。
+ * docs/20 §4 明说它「约 10 行、会话式列表天生适合窄屏，无需分页」——
+ * 所以这里**不做分页**、不做搜索（430px 上都是浪费）。
+ *
+ * ⚠ 与告急带的分工（docs/20 §2.1）：
+ *   告急带 = 「现在就必须看一眼」的 1~3 条，钉在总账顶部；
+ *   信匣   = 全部来信（含不急的风声）。
+ *   告急带的「还有 N 条」必须把人送到这里，否则那条路是断的 —— 见 ledgerBelt 的收尾。
+ *
+ * ⚠ 已读状态存在**引擎的 s.inbox**（m.read）上，不存在 ui 里：
+ *   存 ui 的话一刷新就全变回未读，角标永远清不掉。
+ *   反之，「正在看哪一封」是纯界面态，不该进存档 —— 所以它留在本文件作用域。
+ *
+ * ⚠ 导航一律 data-root（一级屏切换）。**不能用 data-view**：
+ *   那条分支表示"二级公司层页签"，会把 ui.root 复位成二级（自己把自己踢出信匣）。
+ */
+
+/* 当前打开的信的 id；null = 看列表。 */
+let mailOpenId = null;
+
+/* 我的信：只取收件人是我的，新的在前（会话行按时间倒序，docs/20 §2.1）。 */
+function mailBox() {
+  const all = (G && G.s && Array.isArray(G.s.inbox)) ? G.s.inbox : [];
+  return all.filter(m => m && m.to === G.s.humanId).slice().reverse();
+}
+function mailUnread() {
+  return mailBox().filter(m => !m.read).length;
+}
+/* 未读里最快到期的那件（docs/20 §2.1「信匣角标含最近倒计时」）。
+   角标如果不带"最急的那件还剩多久"，它就只是个装饰。 */
+function mailUrgentT() {
+  let best = null;
+  for (const m of mailBox()) {
+    if (m.read || m.deadlineT == null) continue;
+    if (best == null || m.deadlineT < best) best = m.deadlineT;
+  }
+  return best;
+}
+
+/* 顶栏常驻印章（docs/20 §2.1：顶栏右侧常驻，带未读角标）。 */
+function mailSeal() {
+  const n = mailUnread();
+  const left = mailUrgentT();
+  /* 有未读且带时限时，角标旁边再跟一个秒数 —— 这是"必须回来处理"的钩子 */
+  const soon = (n && left != null) ? '<span class="ssoon">' + secLeftTxt(left - G.s.t) + '</span>' : '';
+  return '<button class="seal' + (n ? ' has' : '') + '" data-root="mail">✉' +
+    (n ? '<span class="sbadge">' + (n > 99 ? '99+' : n) + '</span>' : '') +
+    '</button>' + soon;
+}
+
+function mailGlyph(kind) {
+  if (kind === 'deal') return '⚖';
+  if (kind === 'rumor') return '〰';
+  if (kind === 'vote') return '⚑';
+  return '✉';
+}
+/* 会话行的时间：3 天局里只写 hh:mm 会分不清是哪天，所以带天号，但压到最短。 */
+function mailTime(t) { return dayOf(t) + '·' + hhmm(t); }
+
+function mailRow(m) {
+  const dl = m.deadlineT != null
+    ? '<span class="mdl' + (m.deadlineT - G.s.t <= 0 ? ' over' : '') + '">' + secLeftTxt(m.deadlineT - G.s.t) + '</span>'
+    : '';
+  return '<button class="mrow' + (m.read ? '' : ' unread') + '" data-mail="' + m.i + '">' +
+    '<span class="mava ' + esc(m.kind || 'system') + '">' + mailGlyph(m.kind) + '</span>' +
+    '<span class="mtxt">' +
+      '<span class="mfrom">' + esc(m.from) + (m.read ? '' : '<span class="mdot"></span>') + dl + '</span>' +
+      '<span class="msub">' + esc(m.subject) + '</span>' +
+    '</span>' +
+    '<span class="mtime">' + mailTime(m.t) + '</span>' +
+  '</button>';
+}
+
+function viewMailDetail(m) {
+  const dl = m.deadlineT != null
+    ? '<div class="mdlg">剩 ' + secLeftTxt(m.deadlineT - G.s.t) + '</div>' : '';
+  /* ⚠ 票决的三按钮（docs/20 §2.1「票决｜决议邮件详情」）本批**故意不画**：
+     决议的数据模型（我方持股% / 提案方持股% / 门槛 50%/66.7% / 议案生命周期）
+     还没落地，现在画出来就是三颗死按钮 —— 而死按钮这个坑本项目刚踩过一次
+     （viewMake 的「再建一间作坊」：一颗死键同时造成"建不了"和"开不了"两个症状）。
+     等那套数据模型落地，这里直接读 m.actions 渲染。 */
+  return '<div class="ledger mail">' +
+    '<button class="back" data-mailback="1">← 信匣</button>' +
+    '<div class="md">' +
+      '<div class="mdfrom">' + esc(m.from) + '<span class="mdtime">' + mailTime(m.t) + '</span></div>' +
+      '<div class="mdsub">' + esc(m.subject) + '</div>' +
+      dl +
+      '<div class="mdbody">' + esc(m.body) + '</div>' +
+    '</div>' +
+  '</div>';
+}
+
+function viewMail() {
+  if (mailOpenId != null) {
+    const m = mailBox().find(x => x.i === mailOpenId);
+    /* 信不见了（读档换局 / 被 200 封上限挤掉）→ 回列表，不要白屏 */
+    if (m) return viewMailDetail(m);
+    mailOpenId = null;
+  }
+  const list = mailBox(), un = mailUnread();
+  return '<div class="ledger mail">' +
+    '<div class="ct"><h3>信匣</h3><span class="sub">' +
+      (list.length ? '共 ' + list.length + ' 封' + (un ? '，未读 ' + un : '') : '空的') +
+    '</span></div>' +
+    (list.length
+      ? '<div class="mrows">' + list.map(mailRow).join('') + '</div>'
+      : '<div class="empty">还没有人来信。<br>有公司来找你谈事、或者市面上有风声，会送到这里。</div>') +
+  '</div>';
+}
+
+/* 打开一封 = 立即已读（写在引擎状态上，刷新不回退）。 */
+function mailOpenBy(i) {
+  mailOpenId = i;
+  const m = mailBox().find(x => x.i === i);
+  if (m && !m.read) m.read = true;
+  render(true);
+}
+function mailClose() { mailOpenId = null; render(true); }
 function render(force) {
   if (!G) return;
   const ae = document.activeElement;
@@ -5150,7 +5417,10 @@ function render(force) {
   /* 一级根屏（集团总账）与二级公司工作台是**两套屏幕**（docs/20 §3）。
      ⚠ 不要把总账塞进 map 当第 9 个 view：那会把它和 7 个页签**平级**，
        而它是页签的**上级**（把爸爸塞进儿子班）。 */
-  const html = ui.root ? viewLedger() : (map[view] || viewFarm)();
+  /* 一级屏是**模式下的一屏**：ui.root 存的是去哪张一级屏
+     （'' / false = 二级公司工作台 | 'ledger' 总账 | 'mail' 信匣；docs/20 §3）。
+     以后加行市/黄历只在这里多一个分支，不用再动层次。 */
+  const html = ui.root === 'mail' ? viewMail() : (ui.root ? viewLedger() : (map[view] || viewFarm)());
   const typing = ae && ae.tagName === 'INPUT' && vw.contains && vw.contains(ae);
   const rewrote = !typing && vw.innerHTML !== html;
   if (rewrote) vw.innerHTML = html;
@@ -5263,8 +5533,16 @@ function handleAction(e) {
      ⚠ 必须排在下一条 `if (d.corp || d.pace) return;` **之前**：
        那句话会把 data-corp 吞掉（开局浮层在用那个键），
        所以总账进公司用 data-enter、回根用 data-root，且优先分派。 */
-  if (d.root) { ui.root = true; render(true); return; }
-  if (d.enter) { ui.root = false; view = 'farm'; render(true); return; }
+  /* 信匣：打开一封 / 返回列表。已读写进引擎状态，空态则回列表（见 18-mail.js）。 */
+  if (d.mail) { mailOpenBy(+d.mail); return; }
+  if (d.mailback) { mailClose(); return; }
+  /* data-root：一级屏切换（docs/20 §3）。值 = 去哪张一级屏：
+       'ledger'（默认，合并老存档里的 "1"） / 'mail'（顶栏信匣章）。
+     ⚠ ui.root 因此从布尔变成**模式串**：布尔存不下“我有两张一级屏”，
+       以后加行市/黄历还得再改一次。falsy 一律表示二级公司工作台。 */
+  if (d.root) { ui.root = d.root === 'mail' ? 'mail' : 'ledger'; render(true); return; }
+  /* 回公司层时顺手关掉信匣详情：否则下次进信匣会直接弹在上次那封信上。 */
+  if (d.enter) { ui.root = false; mailOpenId = null; view = 'farm'; render(true); return; }
   if (d.corp || d.pace) return;
   if (d.sp != null) { setSpeed(+d.sp); renderTop(); return; }
   if (d.view === 'end') return;

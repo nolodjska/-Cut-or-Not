@@ -40,6 +40,11 @@ function ledgerBelt() {
     const end = a.phase === 'sealed' ? a.sealedEndT : a.openEndT;
     out.push('<button class="alert" data-view="auction">⚠ 拍卖会进行中，剩 ' + secLeftTxt(end - G.s.t) + '</button>');
   }
+  /* 收尾：待读的信也缀在告急带尾部（docs/20 §2.1 把“告急带 → 信匣”定成一条路）。
+     没有这行，信匣就只能靠顶栏那颗小印章发现 —— 新手根本不会去点。
+     ⚠ 走 data-root（一级屏切换），不能用 data-view：后者会把 ui.root 复位成二级。 */
+  const un = mailUnread();
+  if (un) out.push('<button class="alert" data-root="mail">✉ ' + un + ' 封没读的信</button>');
   return out;
 }
 
@@ -106,14 +111,23 @@ function viewLedger() {
     '<div class="ct"><h3>手里的公司</h3><span class="sub">共 ' + book.length + ' 家' +
       (held ? '（参股 ' + held + ' 家）' : '') + '</span></div>' +
     '<div class="firms">' + book.map(r =>
+      /* 卡内布局：左边文字（公司名 + 状态章 + 持股/家底），右边动作按钮。
+         ⚠ 原来是「文字两行 + 按钮独占第三行」，卡片被撑成三行、按钮吊在左下角；
+           2026-10-08 玩家要求改用左右分布 —— 卡片矮一截，也不用再往下扫一眼找按钮。
+         ⚠ 两层包装（.fmain / .fact）是必需的：只给按钮 float/absolute 的话，
+           公司名一长就会压到按钮底下（.fmain 的 min-width:0 才是那个“允许被挤”的开关）。 */
       '<div class="firm">' +
-        '<div class="ft">' + esc(r.name) + '<span class="tag">' +
-          (r.control >= 0.5 ? '控股' : '参股') + '</span></div>' +
-        '<div class="fl"><span class="lamp ' + r.lamp + '"></span>持股 ' +
-          Math.round(r.stake * 100) + '% · 家底 ' + fmt(r.nav) + ' G</div>' +
-        (r.control >= 0.5
-          ? '<button class="btn p" data-enter="' + r.id + '">进入经营</button>'
-          : '<button class="btn" disabled>只参股，不下手</button>') +
+        '<div class="fmain">' +
+          '<div class="ft">' + esc(r.name) + '<span class="tag">' +
+            (r.control >= 0.5 ? '控股' : '参股') + '</span></div>' +
+          '<div class="fl"><span class="lamp ' + r.lamp + '"></span>持股 ' +
+            Math.round(r.stake * 100) + '% · 家底 ' + fmt(r.nav) + ' G</div>' +
+        '</div>' +
+        '<div class="fact">' +
+          (r.control >= 0.5
+            ? '<button class="btn p" data-enter="' + r.id + '">进入经营</button>'
+            : '<button class="btn" disabled>只参股，不下手</button>') +
+        '</div>' +
       '</div>').join('') + '</div>' +
 
   '</div>';

@@ -50,6 +50,7 @@ module.exports = [
   /* 17 放在 14-render 之前：本文件顶层的只有 function 声明（会提升），
      顺序不影响正确性；这样排是为了“根屏先定义、再被 render 引用”好读。 */
   '17-ledger.js',
+  '18-mail.js',
   '14-render.js',
   '15-events.js',
   '16-boot.js',

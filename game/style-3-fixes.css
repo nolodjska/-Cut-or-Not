@@ -304,9 +304,47 @@ body{
 .alert{display:block;width:100%;text-align:left;font-size:12.5px;padding:8px 10px;border-radius:8px;
   border:1px solid rgba(180,40,40,.35);background:rgba(180,40,40,.07);color:inherit}
 .firms{display:flex;flex-direction:column;gap:8px}
-.firm{padding:10px 12px;border-radius:10px;background:var(--paper-hi)}
+/* 一行两栏：左文字 / 右按钮（2026-10-08 玩家要求，原为按钮独占第三行）。
+   ⚠ .fmain 的 min-width:0 不能删：flex 子项默认 min-width:auto，
+     公司名一长就会把按钮顶出卡片，而不是自己缩。 */
+.firm{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;background:var(--paper-hi)}
+.firm .fmain{flex:1 1 auto;min-width:0}
+.firm .fact{flex:0 0 auto}
+/* 按钮不折行：参股那档文案更长（只参股，不下手），窄屏下会被拆成两行 */
+.firm .fact .btn{white-space:nowrap}
+
+/* ---------- J2. 信匣（一级屏，docs/20 §2.1）---------- */
+/* 顶栏常驻印章 + 未读角标。
+   ⚠ 印章**不能用深底**：顶栏是米色纸，深色容器会让内部的 var(--ink*) 变近白 → 文字隐形
+     （这个坑本项目已犯过两次：#feed 与 .crop）。所以这里只用 currentColor + 透明度。 */
+.seal{position:relative;display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;margin-left:6px;padding:0;border:1px solid currentColor;border-radius:8px;background:transparent;color:inherit;font-size:14px;line-height:1;opacity:.45;vertical-align:middle;cursor:pointer}
+.seal.has{opacity:1;border-color:#b3261e;color:#b3261e}
+.sbadge{position:absolute;top:-6px;right:-6px;min-width:15px;height:15px;padding:0 3px;border-radius:8px;background:#b3261e;color:#fff;font-size:10px;line-height:15px;text-align:center}
+.ssoon{margin-left:4px;font-size:10.5px;font-weight:700;color:#b3261e;vertical-align:middle}
+/* 会话列表：docs/20 §4「约 10 行，无需分页」——所以每行压到 ~46px。 */
+.mrows{display:flex;flex-direction:column;gap:2px}
+.mrow{display:flex;align-items:center;gap:9px;width:100%;padding:9px 4px;border:0;border-bottom:1px solid rgba(0,0,0,.07);background:transparent;text-align:left;color:inherit;cursor:pointer}
+.mrow.unread{background:rgba(179,38,30,.05)}
+.mava{flex:0 0 auto;width:26px;height:26px;border-radius:50%;background:rgba(0,0,0,.06);font-size:13px;line-height:26px;text-align:center}
+.mtxt{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:2px}
+.mfrom{display:flex;align-items:center;gap:5px;font-size:12.5px;font-weight:700}
+.mdot{width:6px;height:6px;border-radius:50%;background:#b3261e}
+.mdl{margin-left:auto;font-size:10.5px;font-weight:700;color:#b3261e}
+.mdl.over{opacity:.5}
+.msub{font-size:11.5px;opacity:.72;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mtime{flex:0 0 auto;font-size:10.5px;opacity:.5}
+.empty{padding:26px 12px;text-align:center;font-size:12.5px;line-height:1.8;opacity:.6}
+/* 信件详情 */
+.back{margin:0 0 10px;padding:6px 10px;border:1px solid currentColor;border-radius:8px;background:transparent;color:inherit;font-size:12px;opacity:.7;cursor:pointer}
+.md{padding:12px;border-radius:10px;background:var(--paper-hi)}
+.mdfrom{display:flex;align-items:center;justify-content:space-between;font-size:12.5px;font-weight:700}
+.mdtime{font-size:10.5px;font-weight:400;opacity:.5}
+.mdsub{margin-top:6px;font-size:15px;font-weight:700}
+.mdlg{margin-top:6px;font-size:11.5px;font-weight:700;color:#b3261e}
+.mdbody{margin-top:9px;font-size:13px;line-height:1.85;white-space:pre-wrap;opacity:.85}
 .firm .ft{display:flex;align-items:center;gap:6px;font-size:14px;font-weight:700}
-.firm .fl{display:flex;align-items:center;gap:6px;margin:5px 0 7px;font-size:11.5px;opacity:.75}
+/* 家底那行是本栏最后一行，只留上边距（原来还带 7px 下边距，是按钮另起一行时的旧间距） */
+.firm .fl{display:flex;align-items:center;gap:6px;margin-top:5px;font-size:11.5px;opacity:.75}
 .lamp{display:inline-block;flex:0 0 auto;width:9px;height:9px;border-radius:50%}
 .lamp.ok{background:#4a8f4a}
 .lamp.mid{background:#c8a03a}

@@ -97,6 +97,9 @@ Game.prototype._init = function (opts) {
     countdown: null,
     lotInterventions: [],
     feed: [], feedSeq: 0,
+    /* 信匣（docs/20 §2.1）：只装**指名寄给人的信**，与 feed（公共流水）分开。
+       旧存档没有这个键 → 引擎与 UI 一律用 Array.isArray 兜底，不做迁移。 */
+    inbox: [], inboxSeq: 0,
     stats: { injections: 0, trades: 0, monopolist: null },
     seq: 0,
   };

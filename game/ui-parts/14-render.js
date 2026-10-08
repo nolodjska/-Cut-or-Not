@@ -23,7 +23,10 @@ function render(force) {
   /* 一级根屏（集团总账）与二级公司工作台是**两套屏幕**（docs/20 §3）。
      ⚠ 不要把总账塞进 map 当第 9 个 view：那会把它和 7 个页签**平级**，
        而它是页签的**上级**（把爸爸塞进儿子班）。 */
-  const html = ui.root ? viewLedger() : (map[view] || viewFarm)();
+  /* 一级屏是**模式下的一屏**：ui.root 存的是去哪张一级屏
+     （'' / false = 二级公司工作台 | 'ledger' 总账 | 'mail' 信匣；docs/20 §3）。
+     以后加行市/黄历只在这里多一个分支，不用再动层次。 */
+  const html = ui.root === 'mail' ? viewMail() : (ui.root ? viewLedger() : (map[view] || viewFarm)());
   const typing = ae && ae.tagName === 'INPUT' && vw.contains && vw.contains(ae);
   const rewrote = !typing && vw.innerHTML !== html;
   if (rewrote) vw.innerHTML = html;

@@ -229,7 +229,90 @@ Game.prototype._log = function (kind, text, pid) {
   this.s.feed.push({ i: ++this.s.feedSeq, t: Math.round(this.s.t), kind, text, pid: pid || null });
   if (this.s.feed.length > 400) this.s.feed.shift();
 };
+/* ---- 3.9b 信匣（docs/20 §2.1 信匣｜邮箱 / docs/19 §4.6 治理入口）----------------
+   信 = **指名寄给你**的东西（合作请求 / 收购通知 / 风声 / 决议通知），留未读角标；
+   流水条（feed）= **外面的动静**（谁买卖了什么、价格动了），不留未读。
+   ⚠ 这个分工是 docs/20 §2.1 定的：告急带与信匣角标把“必须回来处理”钉在视线里，
+     流水条是背景音。混成一个会同时污染两边。
+   ⚠ 旧存档没有 inbox / inboxSeq，全部当场兜底，不做迁移（迁移守卫会挂）。 */
+Game.prototype._mail = function (pid, kind, from, subject, body, opts) {
+  const o = opts || {};
+  if (!Array.isArray(this.s.inbox)) this.s.inbox = [];
+  if (typeof this.s.inboxSeq !== 'number') this.s.inboxSeq = 0;
+  const m = {
+    i: ++this.s.inboxSeq, t: Math.round(this.s.t), to: pid,
+    kind, from, subject, body: body || '',
+    read: false,
+    key: o.key || null,                     /* 去重键（派生式信件必需，见 _mailTick） */
+    deadlineT: typeof o.deadlineT === 'number' ? o.deadlineT : null,
+    actions: o.actions || null,             /* 留给票决的三按钮（赞成/反对/弃权） */
+  };
+  this.s.inbox.push(m);
+  if (this.s.inbox.length > 200) this.s.inbox.shift();
+  if (!o.silent) this._log('mail', '✉ ' + from + ' 来信：' + subject, pid);
+  return m;
+};
+
+/* 从**已有状态**派生该寄的信。
+   ⚠ 为什么不直接在各系统的事件点上插一行 _mail：
+     ① 事件点散在 04 / 05 / 09 / 11 / 15 五个 part，插一行就要动五处、逐个重对锚点；
+     ② 事件点是“发生的那一瞬”，而信是“**要你处理的事**” —— 同一件事会在状态里
+        持续成立（拍卖进行中、现金为负、有人在囤货），派生天然覆盖
+        “我读档回来时它还在”，插点做不到。
+   ⚠ 必须幂等：_flush 每次 act / tick 都跑，靠 key 去重；否则一场拍卖能寄出几百封。
+   ⚠ 本批只覆盖**引擎已存在**的信号。NPC 提案（合作请求 / 收购通知 / 决议）
+     需要决议数据模型，是下一刀 —— 这里**不伪造**。 */
+Game.prototype._mailTick = function () {
+  const s = this.s;
+  if (!s || !Array.isArray(s.players)) return;
+  if (!Array.isArray(s.inbox)) s.inbox = [];
+  const me = s.players.find(p => p.id === s.humanId);
+  if (!me) return;
+  const has = k => s.inbox.some(m => m.key === k);
+  const post = (key, kind, from, subject, body, opts) => {
+    if (has(key)) return;
+    this._mail(me.id, kind, from, subject, body, Object.assign({ key }, opts || {}));
+  };
+
+  /* ① 拍卖会进行中 —— 有时限，错过就没了，所以是最该寄的一封 */
+  const a = s.auction;
+  if (a && a.phase !== 'done') {
+    const end = a.phase === 'sealed' ? a.sealedEndT : a.openEndT;
+    post('auction:' + s.auctionCount, 'deal', '拍卖行', '开槌了，场上有货',
+      end ? '现在能出价，剩 ' + Math.max(0, Math.round(end - s.t)) + ' 秒截止。过了这一场，下一场不知道什么时候。' :
+            '现在能出价，抓紧。',
+      { deadlineT: end || null });
+  }
+
+  /* ② 欠的账快赶上家底（与 08-chrome 的 warnBox、总账的健康灯同一杆标尺 × 1.5）*/
+  let sheet = null;
+  try { sheet = this.consolidated(me); } catch (e) { sheet = null; }
+  if (sheet) {
+    if (sheet.debt > 0 && sheet.nav < sheet.debt * BAL.maintRatio * 1.5) {
+      post('maint', 'system', '钱庄', '你欠的账快赶上家底了',
+        '再往下走，债主可能会上门拿地、拿货、拿公司抵债。先去“钱庄”把钱还上或把货卖掉。');
+    }
+  }
+
+  /* ③ 现金为负（追保窗口已经开了）*/
+  if (me.cash < 0) {
+    post('cashneg', 'system', '钱庄', '你手上的现金已经是负的',
+      '现金为负时会被记债。卖掉点货，或者去“钱庄”借一笔把洞堵上。');
+  }
+
+  /* ④ 有人在囤某种货（垄断倒计时）—— 风声，不是命令，所以写得像传闻 */
+  const cd = s.countdown;
+  if (cd && cd.crop && s.crops[cd.crop]) {
+    post('mono:' + s.auctionCount + ':' + cd.crop, 'rumor', '市场上的风声',
+      '有人在扫 ' + s.crops[cd.crop].name,
+      '市面上开始有人大量收 ' + s.crops[cd.crop].name + '，价格已经在动了。要不要跟着做，你自己定。');
+  }
+};
+
 Game.prototype._flush = function () {
+  /* 派生式信件的唯一入口。放在 listeners 之前：这样订阅者（UI）拿到的 s
+     已经包含本帧新到的信，不会出现“预览图有信、信匣里没有”的错位。 */
+  this._mailTick();
   for (const fn of this.listeners) fn(this.s);
 };
 

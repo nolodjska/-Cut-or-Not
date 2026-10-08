@@ -43,8 +43,16 @@ function handleAction(e) {
      ⚠ 必须排在下一条 `if (d.corp || d.pace) return;` **之前**：
        那句话会把 data-corp 吞掉（开局浮层在用那个键），
        所以总账进公司用 data-enter、回根用 data-root，且优先分派。 */
-  if (d.root) { ui.root = true; render(true); return; }
-  if (d.enter) { ui.root = false; view = 'farm'; render(true); return; }
+  /* 信匣：打开一封 / 返回列表。已读写进引擎状态，空态则回列表（见 18-mail.js）。 */
+  if (d.mail) { mailOpenBy(+d.mail); return; }
+  if (d.mailback) { mailClose(); return; }
+  /* data-root：一级屏切换（docs/20 §3）。值 = 去哪张一级屏：
+       'ledger'（默认，合并老存档里的 "1"） / 'mail'（顶栏信匣章）。
+     ⚠ ui.root 因此从布尔变成**模式串**：布尔存不下“我有两张一级屏”，
+       以后加行市/黄历还得再改一次。falsy 一律表示二级公司工作台。 */
+  if (d.root) { ui.root = d.root === 'mail' ? 'mail' : 'ledger'; render(true); return; }
+  /* 回公司层时顺手关掉信匣详情：否则下次进信匣会直接弹在上次那封信上。 */
+  if (d.enter) { ui.root = false; mailOpenId = null; view = 'farm'; render(true); return; }
   if (d.corp || d.pace) return;
   if (d.sp != null) { setSpeed(+d.sp); renderTop(); return; }
   if (d.view === 'end') return;

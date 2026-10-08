@@ -8,11 +8,20 @@ function renderTop() {
      ⚠ crumb 必须走事件委托（data-root），不能绑 onclick：
        #clock 每 120ms 被重写一次，绑在节点上的 handler 会跟着节点一起销毁 ——
        那就是“按钮不灵、要点好几下”那个老坑。 */
-  const crumb = ui.root
-    ? '<b class="crumb on">🏠 总账</b>'
-    : '<button class="crumb" data-root="1">← 集团</button>';
+  /* 面包屑（docs/20 §2.3）：左上角恒有“回上一层”的路。
+     ⚠ 一级屏从布尔变模式串之后，这里必须**按模式分档**：
+       原来只有“ui.root 假=二级 / 真=总账”两档，于是进了信匣之后左上角
+       变成不可点的 <b>🏠 总账</b> —— 既写错了“你现在在哪”，又**没有出路**
+       （信匣成了死胡同，只能刷新页面逃出来）。2026-10-08 真机截图看出来的。
+     ⚠ 二级那一档的 data-root 从 "1" 改成 "ledger"：两个值都能用（分派里
+       非 'mail' 一律当作 'ledger'），但写明白才不会让下一个人以为是随便填的。 */
+  const crumb = !ui.root
+    ? '<button class="crumb" data-root="ledger">← 集团</button>'
+    : (ui.root === 'mail'
+      ? '<button class="crumb" data-root="ledger">← 总账</button>'
+      : '<b class="crumb on">🏠 总账</b>');
   $('#clock').innerHTML = crumb + '第 <b>' + dayOf(s.t) + '</b> 天 <b>' + hhmm(s.t) + '</b>' +
-    (ui.root ? '' : ' · ' + esc(HUMAN.corpName));
+    (ui.root ? '' : ' · ' + esc(HUMAN.corpName)) + mailSeal();
   $('#navbig').innerHTML = fmt(nav) + '<small>G</small>';
   const invV = G.inventoryValue(HUMAN), debt = HUMAN.debt + G.shortLiability(HUMAN);
   /* 四个指标压进一行：净资产在左（大字号），现金/库存/欠款在右。
