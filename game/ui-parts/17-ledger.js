@@ -94,6 +94,36 @@ function shopBtn(mode, name, dot) {
     (dot ? '<span class="dot"></span>' : '') + '</button>';
 }
 
+/* Z3 股东会（docs/19 §4.13）：提案 + 表决。
+   ⚠ 只在**自己主控**的公司上出现 —— 参股的公司轮不到你提案（§4.13 明写）。
+   ⚠ “还没表态 / 同意 / 不同意”必须分开写：同一个按钮点过之后要看得出来已记下了。 */
+function decisionBlock() {
+  const s = G.s;
+  const decs = (s.decisions || []).filter(x => x.corpId === HUMAN.corp && x.status === 'open');
+  if (!decs.length) {
+    return '<div class="ct"><h3>股东会</h3><span class="sub">没在议的事</span></div>' +
+      '<div class="firm"><div class="fmain">' +
+        '<div class="fl">想把公司赚的钱发一点到手上，就提个议，股东们表个态。</div>' +
+      '</div><div class="fact">' +
+        '<button class="btn" data-act="dividend">提议分钱</button>' +
+      '</div></div>';
+  }
+  return '<div class="ct"><h3>股东会</h3><span class="sub">正在议</span></div>' +
+    decs.map(dec => {
+      const left = Math.max(0, Math.ceil((dec.dueT - s.t) / 60));
+      const mine = dec.voters[HUMAN.id];
+      return '<div class="firm"><div class="fmain">' +
+        '<div class="ft">' + esc(dec.label) + '</div>' +
+        '<div class="fl">还剩 ' + left + ' 游戏小时 · ' +
+          (mine ? (mine === 'for' ? '你已经同意' : '你已经不同意') : '你还没表态') + '</div>' +
+      '</div><div class="fact">' +
+        (mine ? '' :
+          '<button class="btn p" data-act="votefor" data-id="' + dec.id + '">同意</button>' +
+          '<button class="btn" data-act="voteagainst" data-id="' + dec.id + '">不同意</button>') +
+      '</div></div>';
+    }).join('');
+}
+
 function viewLedger() {
   const book = ledgerBook();
   const belt = ledgerBelt();
@@ -136,6 +166,8 @@ function viewLedger() {
             : '<button class="btn" disabled>只参股，不下手</button>') +
         '</div>' +
       '</div>').join('') + '</div>' +
+
+    decisionBlock() +
 
     /* Z4 进店行（docs/20 §2.1）：低频重功能收口成一行，把屏幕让给 Z2。
        ⚠ 2026-10-08 玩家要求把 市场/情报/钱庄/拍卖/图鉴 从底栏**搬到总账** ——

@@ -105,6 +105,11 @@ if (d.root) {
   /* §4.12 从公司拿钱：默认拿满（= 公司现金 × 持股 × 0.8 的上限）。
      它是**借款**、要还，所以身价当场不变 —— 拿钱不是印钞（见 `_a_take`）。 */
   if (d.act === 'take') { A('take', {}); return; }
+  /* §4.13 股东会：提案与表决。三个按钮均走 data-act —— 于是 wiring-check 会替我验证
+     它们真的接到了分派表上（这就是当年“工坊修不了”那颗死按钮留下的教训）。 */
+  if (d.act === 'dividend') { A('propose', { kind: 'dividend', ratio: 0.5 }); return; }
+  if (d.act === 'votefor') { A('vote', { id: +d.id, for: true }); return; }
+  if (d.act === 'voteagainst') { A('vote', { id: +d.id, for: false }); return; }
 
   if (d.qset) {
     const [cid, v] = d.qset.split(':');

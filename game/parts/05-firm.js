@@ -50,6 +50,139 @@ Game.prototype._a_take = function (p, d) {
   return { ok: true, msg: '拿走 ' + money(amt) + ' G。这笔记在你名下，是要还的 —— 所以你的身价没变' };
 };
 
+/* ---- 4.13 股东名册与决议（docs/19 §4.13 / §4.14）--------------------- */
+/* 名册（docs/19 §4.13）——返回**这家公司**的持股人。
+   ⚠ 口径必须说清（我第一版错了，G1 当场抓到）：
+     每个玩家的 holdings 记的是“我自己拥有的公司”，**不是一张跳玩家的共享名册**；
+     所以甲、乙各自持有一个同**类型**的公司（都叫 'trade'）并不冲突 ——
+     把“全玩家 holding 里 corpId 相同的”都算进一张名册，会凭空多出股东
+     （实测后果：人力 + 阿May 共 2 票 ⇒ 分红只到手一半）。
+     ⇒ 现阶段名册里只有**控制人自己**一条。真正的多方名册要等 ⑥（并购产生实际持股），
+       那是唯一会新增股东的动作。
+   已发行股份按 100% 计（分母 = 1）：持股比例 = stake / 1。 */
+Game.prototype.capTable = function (owner, corpId) {
+  /* ⚠ 签名守卫：只认“玩家对象”，不认字符串 corpId。
+     传错时**宁可返回空名册**，也不吐出一个 `pid: undefined` 的假股东 ——
+     假股东会让票决分母、分红份额全部静默算错（这是最坏的一类错）。 */
+  if (!owner || typeof owner !== 'object' || !owner.id) return { rows: [], total: 1 };
+  const cid = corpId || owner.corp;
+  const hs = (Array.isArray(owner.holdings) && owner.holdings.length)
+    ? owner.holdings
+    : [{ corpId: owner.corp, stake: 1, control: 1 }];
+  const rows = [];
+  for (const h of hs) {
+    if (h.bankrupt || h.corpId !== cid) continue;
+    const stake = h.stake == null ? 1 : h.stake;
+    if (stake <= 0) continue;
+    rows.push({ pid: owner.id, name: owner.name, stake,
+      control: h.control == null ? 1 : h.control, isHuman: !!owner.isHuman });
+  }
+  rows.sort((a, b) => b.stake - a.stake);
+  return { rows, total: 1 };
+};
+
+/* 决议类型（docs/19 §4.14 四类里先落两类 —— 董事会与一致同意等真正用到时再加）
+     · 普通决议：出席过半数；出席率不够算“没人理”
+     · 特别决议：出席 2/3（改章程 / 合并分立 / 解散这类大事） */
+const DEC_KINDS = {
+  dividend: { type: 'ordinary', label: '分钱（利润分配）', quorum: 0.5, pass: 0.5 },
+  charter:  { type: 'special',  label: '改章程',           quorum: 0.5, pass: 2 / 3 },
+};
+
+/* 提案：持股 ≥10% 才有提案权（docs/19 §4.13） */
+Game.prototype._a_propose = function (p, d) {
+  const kind = d.kind || 'dividend';
+  const spec = DEC_KINDS[kind];
+  if (!spec) return { ok: false, msg: '没有这种提案' };
+  const corpId = p.corp;
+  const cap = this.capTable(p, corpId);
+  const mine = cap.rows.find(r => r.pid === p.id);
+  if (!mine || mine.stake / cap.total < 0.10) {
+    return { ok: false, msg: '手上股份不到一成，提案没人接' };
+  }
+  const open = (this.s.decisions || []).find(x => x.corpId === corpId && x.status === 'open');
+  if (open) return { ok: false, msg: '上一件事还没表态完，一件一件来' };
+  const dec = {
+    id: ++this.s.decisionSeq, corpId, ownerPid: p.id, kind, type: spec.type, label: spec.label,
+    openT: this.s.t, dueT: this.s.t + BAL.decisionHours * 60,
+    ratio: kind === 'dividend' ? clamp(d.ratio == null ? 0.5 : d.ratio, 0, 1) : 0,
+    voters: {}, status: 'open', turnout: 0, yes: 0, no: 0, reason: '',
+  };
+  this.s.decisions.push(dec);
+  this._log('event', '⚑ 有人提了一件事：' + spec.label + '。股东们要在 ' +
+    BAL.decisionHours + ' 游戏小时内表个态。', null);
+  return { ok: true, msg: '提案已发出：' + spec.label + '（' + BAL.decisionHours + ' 游戏小时内表态）' };
+};
+
+/* 表态 */
+Game.prototype._a_vote = function (p, d) {
+  const dec = (this.s.decisions || []).find(x => x.id === d.id && x.status === 'open');
+  if (!dec) return { ok: false, msg: '这件事已经结束了' };
+  /* 只有这家公司的**控制人**（现阶段名册里唯一的股东）能表态。 */
+  const owner = this.s.players.find(x => x.id === (dec.ownerPid || ''));
+  if (!owner || owner.id !== p.id) return { ok: false, msg: '你不是这家公司的股东' };
+  const cap = this.capTable(owner, dec.corpId);
+  if (!cap.rows.some(r => r.pid === p.id)) return { ok: false, msg: '你不是这家公司的股东' };
+  if (dec.voters[p.id]) return { ok: false, msg: '你已经表过态了' };
+  dec.voters[p.id] = d.for === false ? 'against' : 'for';
+  return { ok: true, msg: d.for === false ? '记下了：你不同意' : '记下了：你同意' };
+};
+
+/* 票决结算：到期才结 —— 四态必须分开（docs/19 §4.14）
+     「没人理」（出席率不够）与「顶上」（多数反对）**不是同一件事**：
+     前者是可以重提的沉默，后者是明确的否决，混在一起玩家就看不懂为什么被拒。 */
+Game.prototype._decisionTick = function () {
+  const s = this.s;
+  const decs = s.decisions || [];
+  if (!decs.length) return;
+  for (const dec of decs) {
+    if (dec.status !== 'open') continue;
+    const owner = s.players.find(x => x.id === dec.ownerPid);
+    const cap = this.capTable(owner, dec.corpId);
+    const spec = DEC_KINDS[dec.kind] || { quorum: 0.5, pass: 0.5 };
+    let yes = 0, no = 0, cast = 0;
+    for (const row of cap.rows) {
+      const v = dec.voters[row.pid];
+      if (v === 'for') { yes += row.stake; cast += row.stake; }
+      else if (v === 'against') { no += row.stake; cast += row.stake; }
+    }
+    dec.turnout = cast / cap.total; dec.yes = yes / cap.total; dec.no = no / cap.total;
+    if (s.t < dec.dueT) continue;
+    if (dec.turnout < spec.quorum) { dec.status = 'nobody'; dec.reason = '表态的人太少'; }
+    else if (yes / Math.max(1e-9, cast) >= spec.pass) { dec.status = 'pass'; }
+    else { dec.status = 'votedown'; dec.reason = '摇头的人更多'; }
+    if (dec.status === 'pass' && dec.kind === 'dividend') this._payDividend(dec.corpId, dec.ratio, cap);
+    if (dec.status === 'pass') this._log('event', '✔ 那件事过了：' + dec.label, null);
+    else if (dec.status === 'votedown') this._log('event', '✘ 那件事没过：' + dec.label + '（' + dec.reason + '）', null);
+    else this._log('event', '· 那件事没人理：' + dec.label, null);
+  }
+  if (decs.length > 20) s.decisions = decs.slice(-20);
+};
+
+/* 分钱（docs/19 §4.13 法定顺序）——
+   ① 先弥补亏损：本作没有累计亏损表，用“净资产 ≤ 0 就不许分”作为等价闸门；
+   ② 提 10% 法定公积金：不建独立科目，就地表现为“少分 10%”（留在公司里）；
+   ③ 余额才按股比分。
+   ⚠ 为什么必须走这个顺序：跳过它，“分红”就变成股东自己给自己发钱的旋钮。 */
+Game.prototype._payDividend = function (corpId, ratio, cap) {
+  const s = this.s;
+  for (const row of cap.rows) {
+    const holder = s.players.find(x => x.id === row.pid);
+    if (!holder || !holder.alive) continue;
+    if (holder.corp !== corpId) continue;   // 只有主控公司走 p.cash；参股公司按快照，暂不分配
+    if (this.nav(holder) <= 0) return;      // 第①步：净资产为负，不许分
+    const pool = Math.max(0, Math.floor(holder.cash * ratio));
+    const reserve = Math.floor(pool * 0.10);      // 第②步：法定公积金（留在公司）
+    const distributable = pool - reserve;
+    if (distributable <= 0) return;
+    const mineShare = Math.floor(distributable * (row.stake / cap.total));
+    holder.cash -= distributable;
+    holder.personal = (holder.personal || 0) + mineShare;
+    this._log('trade', '公司分钱：拿出 ' + money(distributable) + ' G 按股比发下去，' +
+      holder.name + '自己拿到 ' + money(mineShare) + ' G', holder.id);
+  }
+};
+
 /* 追保与破产（docs/13 §4.3）——「负债 ≠ 破产」的落点。
    判据只有两条，**欠了多少钱本身不算**：
      ① 资不抵债：净资产 / 总负债 < maintRatio（维持线 0.30）

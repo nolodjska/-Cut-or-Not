@@ -117,6 +117,9 @@ Game.prototype._init = function (opts) {
     players: [], humanId: 'P0',
     auction: null, auctionCount: 0,
     countdown: null,
+    /* 决议记录（docs/19 §4.13）：只存已经提出来、还没结束的那些。
+       旧存档没有这个键 ⇒ 全仓一律用 (s.decisions || []) 兜底。 */
+    decisions: [], decisionSeq: 0,
     lotInterventions: [],
     feed: [], feedSeq: 0,
     /* 信匣（docs/20 §2.1）：只装**指名寄给人的信**，与 feed（公共流水）分开。
@@ -337,6 +340,7 @@ Game.prototype._tick = function (dt) {
   this._bankruptcyTick();
   this._navTick(dt);
   this._countdownTick();
+  this._decisionTick();
   if (!s.over && s.t >= BAL.days * 1440) this._end('3 天赛季结束');
 };
 
