@@ -521,7 +521,7 @@ Game.prototype._a_contact = function (p, d) {
     body = p.name + ' 出价 ' + money(o.price) + ' G，要买你手上 ' +
       Math.round(o.give * 100) + '% 的股份' +
       (cross ? '（买完这家公司他说了算）' : '') + '。\n' +
-      '钱进你公司的账。这笔要**先问过其他股东** —— 他们可以按同样的条件先拿。';
+      '钱进你公司的账。这笔要<b>先问过其他股东</b> —— 他们可以按同样的条件先拿。';
     mailKind = 'deal';
   } else if (kind === 'invite') {
     const dec = (s.decisions || []).find(x => x.status === 'open' && x.ownerPid === p.id);
