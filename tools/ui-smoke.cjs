@@ -114,6 +114,23 @@ for (const corp of ['grow', 'trade', 'intel', 'shell', 'make', 'fin']) {
   });
 }
 
+console.log('\n1b) 市场：种子·农资档必须真的渲染出来（§4.15）');
+ok('市场视图含「种子·农资」与 6 条投入品，并说明只能买', () => {
+  D.start('grow', 'GG-UITEST-INPUTS', 8);
+  D.setView('market');
+  const html = D.viewHtml;
+  /* ⚠ 为什么单独验这一条：搬页签那次教会我一件事 ——
+     “无头结构没报错”不等于“它真的出现在页面上”（当时光是属性名对、分支在，
+     五个键却全熔成了总账）。所以这里直接去渲染结果里找那几个名字。 */
+  if (!html.includes('种子·农资')) throw new Error('市场里没有「种子·农资」档');
+  for (const nm of ['萝卜种', '辣椒种', '人参种', '化肥', '农药', '农膜']) {
+    if (!html.includes(nm)) throw new Error('种子档里缺：' + nm);
+  }
+  if (!html.includes('不能倒手卖')) throw new Error('没告诉玩家这一档只能买不能卖');
+  /* 反面：投入品不得被当成可挂单/可卖的东西渲染（那会在点了之后才报错） */
+  if (html.includes('data-sell="seed_radish"')) throw new Error('种子档不该出现卖出按钮');
+});
+
 console.log('\n2) 主要按钮逐个点一遍（走真实点击委托）');
 D.start('trade', 'GG-UICLICK', 8);
 const before = D.human.cash;
