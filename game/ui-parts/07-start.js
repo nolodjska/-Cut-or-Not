@@ -8,12 +8,10 @@ const starTxt = n => '★'.repeat(n) + '☆'.repeat(Math.max(0, 5 - n));
 function renderStart() {
   const CORPS = GG.CORPS;
   let corp = 'grow';
-  const paces = [
-    { id: 1.6, n: '极速局', d: '整局约 2 分钟', s: '开发/测试用' },
-    { id: 8, n: '标准局', d: '整局约 10 分钟', s: '推荐，一次坐下来玩完' },
-    { id: 3600, n: '放置局', d: '整局 3 天', s: '每天上来收菜' },
-  ];
-  let pace = 8;
+  /* 三档节奏统一由引擎的 BAL.paces 给（见 01-data.js 的注释：
+     原来硬编码在这里，于是“整局多长”这条最基本的数值没任何守卫能测到）。 */
+  const paces = GG.BAL.paces;
+  let pace = GG.BAL.paceDefault;
   const sv = store.get(LS.save, null);
   const canContinue = !!(sv && sv.blob && !sv.over);
   /* 复仇开局：上一局被清算过，就可以带着遗产回来（docs/04 的结论：

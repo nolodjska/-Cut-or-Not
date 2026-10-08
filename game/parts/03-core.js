@@ -110,7 +110,7 @@ Game.prototype._init = function (opts) {
   }
 
   this.s = {
-    version: BAL.version, seed, t: 0, day: 1, secPerGameHour: opts.secPerGameHour || 8,
+    version: BAL.version, seed, t: 0, day: 1, secPerGameHour: opts.secPerGameHour || BAL.paceDefault,
     speed: 1, paused: false, over: false, overReason: null,
     crops, products, inputs, rules,
     eventQueue, activeEvents: [],
