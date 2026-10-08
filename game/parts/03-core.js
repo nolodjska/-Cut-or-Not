@@ -220,6 +220,12 @@ Game.prototype._newPlayer = function (id, name, corpId, isHuman) {
       tycoon:   { met: 0, day: -1, boughtToday: 0, refusedDay: -1, used: false },
     },
     loansOut: [],                        // 放出去的账 [{toPid, principal, rateDay, dueT}]
+    /* 我在**别人**公司里持有的股份（docs/19 §4.13 合资/参股）：
+       [{ targetPid, stake, price, t }]。
+       ⚠ 这是真正的“多方名册”那一半 —— holdings 只记“我自己开的公司”，
+         光看 holdings 名册里永远只有一条（G1 当场抓到过）。
+       旧存档没有这个键 ⇒ 全仓一律用 (p.stakes || []) 兜底。 */
+    stakes: [],
     shorts: {},
     limitOrders: [], orderSeq: 0,
     mods: {

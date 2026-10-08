@@ -124,6 +124,35 @@ function decisionBlock() {
     }).join('');
 }
 
+/* Z3b 名录与名次（docs/19 §4.6）+ 找人谈事（docs/19 §4.9）。
+   ⚠ 榜单读引擎的 G.standings()，UI **不自己排序、不自己算身价** ——
+     两处各算一遍必然对不上（本项目踩过“面板价 vs 成交价”）。
+   ⚠ 三颗按钮一律 data-act + data-*：wiring-check 会替我验证它们真的接到了分派表。 */
+function boardSection() {
+  const rows = (G && G.standings) ? G.standings() : [];
+  if (!rows.length) return '';
+  const list = rows.map(r => {
+    const me = r.pid === G.s.humanId;
+    const talk = me ? '' :
+      '<span class="chips">' +
+        '<button class="btn" data-act="contact" data-kind="borrow" data-to="' + r.pid + '">借钱</button>' +
+        '<button class="btn" data-act="contact" data-kind="jv" data-to="' + r.pid + '">邀他入股</button>' +
+        '<button class="btn" data-act="contact" data-kind="invite" data-to="' + r.pid + '">请他议事</button>' +
+      '</span>';
+    return '<div class="firm">' +
+      '<div class="fmain">' +
+        '<div class="ft">' + r.rank + '. ' + esc(r.name) +
+          (me ? '<span class="tag">你</span>' : '') + '</div>' +
+        '<div class="fl">' + esc(r.corpName) + ' · 身价 ' + fmt(r.nav) + ' G' +
+          (r.debt > 0 ? ' · 欠着 ' + fmt(r.debt) + ' G' : '') + '</div>' +
+      '</div>' +
+      (talk ? '<div class="fact">' + talk + '</div>' : '') +
+    '</div>';
+  }).join('');
+  return '<div class="ct"><h3>公司名录 · 名次</h3><span class="sub">共 ' + rows.length +
+    ' 家 · 实时</span></div><div class="firms">' + list + '</div>';
+}
+
 function viewLedger() {
   const book = ledgerBook();
   const belt = ledgerBelt();
@@ -173,6 +202,8 @@ function viewLedger() {
       '</div>').join('') + '</div>' +
 
     decisionBlock() +
+
+    boardSection() +
 
     /* Z4 进店行（docs/20 §2.1）：低频重功能收口成一行，把屏幕让给 Z2。
        ⚠ 2026-10-08 玩家要求把 市场/情报/钱庄/拍卖/图鉴 从底栏**搬到总账** ——

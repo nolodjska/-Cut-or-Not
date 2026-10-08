@@ -335,6 +335,21 @@ Game.prototype._offerTick = function () {
   /* 过期：提案有寿命。超时不是“没发生”，而是“对方把这个条件收回了”。 */
   for (const o of s.offers) if (o.status === 'open' && s.t > o.deadlineT) o.status = 'lapsed';
 
+  /* ---- 第二段：**你发出去的**提议，NPC 那边给回音 ----
+     ⚠ 这段必须放在下面那几个 early return **之前**：
+       那些 return 是“NPC 主动来找你”的频率限制，不该把“别人回你的话”一起卡掉。
+     ⚠ 延迟 3 游戏小时再回：秒回的话，“联系别人”看起来像按开关，
+       而且那段时间玩家看不到“正在等回话”（docs/19 §4.9）。 */
+  for (const o of s.offers) {
+    if (!o.outbound || o.status !== 'open' || o.answered) continue;
+    const to = s.players.find(x => x.id === o.to);
+    if (!to || !to.alive) { o.status = 'lapsed'; continue; }
+    if (to.isHuman) continue;                 /* 真人自己决定，引擎不代答 */
+    if (s.t < o.t + 180) continue;
+    o.answered = true;
+    this._npcAnswer(o);
+  }
+
   /* 前 6 个游戏小时是新手引导期，不打扰；之后每满 8 小时看一眼有没有人来谈事。 */
   if (s.t < 6 * 60) return;
   const slot = Math.floor(s.t / (8 * 60));
@@ -407,6 +422,11 @@ Game.prototype._decideOffer = function (p, id, accept) {
     o.status = 'declined';
     return { ok: true, msg: '已回绝。' };
   }
+  /* ↓ 新增的方向：由**你**发起、对方点头（docs/19 §4.9）。
+     老的两支（loan / buy）是“NPC 求你”，这两支是“你求别人”，共用同一份 s.offers。 */
+  if (o.kind === 'jv' || o.kind === 'invite' || o.kind === 'borrow') {
+    return this._settleNew(p, o, accept);
+  }
   if (o.kind === 'loan') {
     if (p.cash < o.amount) return { ok: false, msg: '你手上的现金不够借给他' };
     p.cash -= o.amount;
@@ -445,6 +465,176 @@ Game.prototype._decideOffer = function (p, id, accept) {
    所以新增动作只需加方法，**不用去改任何分派表**（也就不会踩到别人正在改的那段）。 */
 Game.prototype._a_acceptOffer = function (p, d) { return this._decideOffer(p, +d.id, true); };
 Game.prototype._a_declineOffer = function (p, d) { return this._decideOffer(p, +d.id, false); };
+
+/* ---- 3.9e 主动联系：由**你**向别人发提案（docs/19 §4.9）------------------
+   三种：借钱 / 入股（合资）/ 拉人议事。
+   ⚠ “合资创办公司”在本作落成**入股你现有的公司**（对方出钱换股份）——
+     “创办一家全新公司”需要公司实体 id（见 docs/19 §4.13 的架构阻断记录），
+     而入股在现有模型里能做到真持股、真分红、真表决（名册里会真的多出一条）。
+   ⚠ 你自己发出的提议**不进你的信匣**（信是“要你处理的事”，不该把你自己发的东西塞回来），
+     只在流水条上留一条。对方是真人时才寄信给他。 */
+Game.prototype._a_contact = function (p, d) {
+  const s = this.s;
+  if (!Array.isArray(s.offers)) s.offers = [];
+  if (typeof s.offersSeq !== 'number') s.offersSeq = 0;
+  const to = s.players.find(x => x.id === d.toPid);
+  if (!to || !to.alive) return { ok: false, msg: '找不到这个人' };
+  if (to.id === p.id) return { ok: false, msg: '不用跟自己谈' };
+  const open = s.offers.filter(o => o.status === 'open' && o.from === p.id).length;
+  if (open >= 3) return { ok: false, msg: '你手上还有几件没回音的，先等人家回话' };
+
+  const kind = d.kind || 'borrow';
+  const deadlineT = s.t + 1440;               /* 一天内答复（与 NPC 提案同口径） */
+  const o = {
+    i: ++s.offersSeq, t: Math.round(s.t), from: p.id, fromName: p.name,
+    to: to.id, kind, status: 'open', deadlineT, mailId: null, outbound: true,
+  };
+  let subject, body, mailKind;
+  if (kind === 'borrow') {
+    o.amount = Math.floor(d.amount == null ? 3000 : d.amount);
+    if (!(o.amount > 0)) return { ok: false, msg: '要借多少得说个数' };
+    /* ⚠ 默认开的息必须**高于**市面利率（BAL.loanRateDay）——
+       照市面利率开，NPC 的判定（≥ 市面×1.1）永远不通过，
+       “借钱”那颗一键按钮就变成了一颗必然失败的按钮。 */
+    o.rateDay = clamp(d.rateDay == null ? BAL.loanRateDay * 1.25 : d.rateDay, 0, 0.2);
+    o.dueT = s.t + 2 * 1440;
+    subject = p.name + ' 想跟你借 ' + money(o.amount) + ' G';
+    body = p.name + ' 手头周转不开，想跟你借 ' + money(o.amount) + ' G，按每天 ' +
+      (o.rateDay * 100).toFixed(1) + '% 计息，两天内还本付息。\n' +
+      '答应的话，钱当场从你账上划给他；到期他不还，这笔就烂在你手里。';
+    mailKind = 'coop';
+  } else if (kind === 'jv') {
+    const own = (p.holdings || []).find(h => h.corpId === p.corp);
+    const cur = own && own.stake != null ? own.stake : 1;
+    o.give = clamp(d.give == null ? 0.2 : d.give, 0, Math.max(0, cur - 0.5));
+    if (!(o.give > 0)) return { ok: false, msg: '你手上的股份已经让不出去了' };
+    o.price = this.stakePrice(p, o.give);
+    if (!(o.price > 0)) return { ok: false, msg: '公司现在估值太低，开不了价' };
+    subject = p.name + ' 邀你入股他的公司（' + Math.round(o.give * 100) + '%）';
+    body = p.name + ' 请你出 ' + money(o.price) + ' G 入股他的公司，占 ' +
+      Math.round(o.give * 100) + '% 的股份。\n' +
+      '这笔钱进公司账。以后公司分钱有你一份，股东会上你也有一票。';
+    mailKind = 'deal';
+  } else if (kind === 'invite') {
+    const dec = (s.decisions || []).find(x => x.status === 'open' && x.ownerPid === p.id);
+    if (!dec) return { ok: false, msg: '你现在没有在议的事 —— 先去股东会提一件' };
+    o.decId = dec.id;
+    subject = p.name + ' 请你对「' + dec.label + '」表个态';
+    body = p.name + ' 想请你对「' + dec.label + '」表个态 —— 回一声你的意见。';
+    mailKind = 'vote';
+  } else {
+    return { ok: false, msg: '没有这种事' };
+  }
+  if (to.isHuman) {
+    o.mailId = this._mail(to.id, mailKind, p.name, subject, body,
+      { deadlineT, actions: ['accept', 'decline'] }).i;
+  }
+  s.offers.push(o);
+  this._log('mail', '✉ 你给 ' + to.name + ' 发了件事：' + subject, p.id);
+  return { ok: true, msg: '发出去等回话，一天内他不回就算这事收回了' };
+};
+
+/* 新方向提案的结算（借钱 / 入股 / 拉人议事）。accepter = 点头的那个人。
+   ⚠ 记账必须**两边成对**：一方减的一方必须加，否则仿真里会凭空多出钱货
+     （这是 _decideOffer 注释里警告过的事，新分支同样适用）。 */
+Game.prototype._settleNew = function (p, o, accept) {
+  const s = this.s;
+  const other = s.players.find(x => x.id === (o.from === p.id ? o.to : o.from));
+  if (!other || !other.alive) { o.status = 'lapsed'; return { ok: false, msg: '对方已经不在了' }; }
+  if (!accept) { o.status = 'declined'; return { ok: true, msg: '你回绝了。' }; }
+
+  if (o.kind === 'borrow') {
+    /* p = 出钱的一方（借出人），other = 借钱的一方 */
+    if (p.cash < o.amount) return { ok: false, msg: '你手上的现金不够借出去' };
+    p.cash -= o.amount; other.cash += o.amount;
+    other.debt += o.amount;
+    if (!Array.isArray(p.loansOut)) p.loansOut = [];
+    p.loansOut.push({ toPid: other.id, principal: o.amount, rateDay: o.rateDay, dueT: o.dueT });
+    o.status = 'accepted';
+    this._log('money', p.name + ' 借给 ' + other.name + ' ' + money(o.amount) +
+      ' G（每天 ' + (o.rateDay * 100).toFixed(1) + '% 计息）', p.id);
+    return { ok: true, msg: '钱已经划出去了，到期自动收本息。' };
+  }
+
+  if (o.kind === 'jv') {
+    /* p = 出钱入股的人，other = 公司老板 */
+    const ownH = (other.holdings || []).find(h => h.corpId === other.corp);
+    if (!ownH) { o.status = 'lapsed'; return { ok: false, msg: '这家公司已经不在了' }; }
+    const cur = ownH.stake == null ? 1 : ownH.stake;
+    const give = Math.min(o.give, cur);
+    if (!(give > 0)) { o.status = 'lapsed'; return { ok: false, msg: '对方手里没有可让的股份' }; }
+    const price = Math.min(o.price, Math.floor(p.cash));
+    if (!(price > 0)) return { ok: false, msg: '你手上的现金不够这笔入股钱' };
+    p.cash -= price; other.cash += price;        /* 增资：钱进**公司账**，不进老板口袋 */
+    ownH.stake = Math.round((cur - give) * 10000) / 10000;
+    if (!Array.isArray(p.stakes)) p.stakes = [];
+    p.stakes.push({ targetPid: other.id, stake: give, price, t: Math.round(s.t) });
+    o.status = 'accepted';
+    this._log('deal', p.name + ' 入股了 ' + other.name + ' 的公司，占 ' +
+      Math.round(give * 100) + '%（出 ' + money(price) + ' G）', p.id);
+    return { ok: true, msg: '成交：你占了他公司 ' + Math.round(give * 100) + '% 的股份，以后分钱有你一份。' };
+  }
+
+  if (o.kind === 'invite') {
+    const dec = (s.decisions || []).find(x => x.id === o.decId && x.status === 'open');
+    if (!dec) { o.status = 'lapsed'; return { ok: false, msg: '那件事已经结束了' }; }
+    /* ⚠ 只是被拉来表态**不算股东**：capTable 里没他，这一票在结算时不进分母。
+       真正的股东身份只能靠入股拿到（那时名册里会真的多出一条）。
+       写清楚这一条，是为了避免“应付一句就等于有了股份”的错觉。 */
+    dec.voters[p.id] = 'for';
+    o.status = 'accepted';
+    this._log('event', p.name + ' 对「' + dec.label + '」表了态：同意', p.id);
+    return { ok: true, msg: '已经替你表了态：同意。' };
+  }
+
+  o.status = 'lapsed';
+  return { ok: false, msg: '这种事不会办' };
+};
+
+/* 你发出去的提议，NPC 给的回音。判定规则要“看得懂”（不是黑箱概率）：
+     · 借钱：他手上有钱、且你给得起息（不低于市面利率）才借
+     · 入股：他现金够、且价钱不吃亏（不高于公允价）才入
+     · 议事：他有空就表个态
+   ⚠ 用 _offerRng（独立流），不能借 this.rng.main —— 那会把 660 局仿真整体挪位，
+     而没有任何一条守卫能告诉你“仿真变了是因为谁”。 */
+Game.prototype._npcAnswer = function (o) {
+  const s = this.s;
+  const to = s.players.find(x => x.id === o.to);
+  const me = s.players.find(x => x.id === o.from);
+  if (!to || !to.alive || !me) { o.status = 'lapsed'; return; }
+  const r = this._offerRng();
+  if (o.kind === 'borrow') {
+    const ok = to.cash >= o.amount && o.rateDay >= BAL.loanRateDay * 1.1;
+    if (!ok) {
+      o.status = 'declined';
+      this._log('mail', '✉ ' + to.name + ' 回话：这笔钱他现在拿不出来', to.id);
+      return;
+    }
+    this._settleNew(to, o, true);
+    return;
+  }
+  if (o.kind === 'jv') {
+    const fair = this.stakePrice(me, o.give);
+    const ok = to.cash >= o.price && o.price <= fair * 1.02;
+    if (!ok) {
+      o.status = 'declined';
+      this._log('mail', '✉ ' + to.name + ' 回话：这个价他不入', to.id);
+      return;
+    }
+    this._settleNew(to, o, true);
+    return;
+  }
+  if (o.kind === 'invite') {
+    if (!r.chance(0.6)) {
+      o.status = 'declined';
+      this._log('mail', '✉ ' + to.name + ' 回话：这事他不想掺和', to.id);
+      return;
+    }
+    this._settleNew(to, o, true);
+    return;
+  }
+  o.status = 'lapsed';
+};
 
 Game.prototype._flush = function () {
   /* 派生式信件与 NPC 提案的唯一入口。放在 listeners 之前：这样订阅者（UI）拿到的 s

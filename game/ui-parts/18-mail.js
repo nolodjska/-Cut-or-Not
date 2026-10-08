@@ -106,8 +106,18 @@ function mailOffer(m) {
     return '<div class="mdec done">' + (done[o.status] || '这件事已经结束。') + '</div>';
   }
   if (s.t > o.deadlineT) return '<div class="mdec done">过期了，对方把条件收了回去。</div>';
-  const yes = o.kind === 'loan' ? '借给他' : '卖给他';
-  const no = o.kind === 'loan' ? '不借' : '不卖';
+  /* ⚠ 按钮文字必须跟着 **kind** 走，不能写死“借给他 / 卖给他” ——
+     新增了 borrow / jv / invite 三类之后，写死会出现
+     “明明是邀你入股，按钮却写着买货”（本项目的死按钮 / 错按钮坑）。 */
+  const LABEL = {
+    loan: ['借给他', '不借'],
+    buy: ['卖给他', '不卖'],
+    borrow: ['借给他', '不借'],
+    jv: ['答应入股', '不入股'],
+    invite: ['表个态', '不管'],
+  };
+  const lab = LABEL[o.kind] || ['答应', '不答应'];
+  const yes = lab[0], no = lab[1];
   return '<div class="mdec">' +
     '<button class="btn p" data-offer="accept:' + o.i + '">' + yes + '</button>' +
     '<button class="btn" data-offer="decline:' + o.i + '">' + no + '</button>' +

@@ -112,6 +112,8 @@ if (d.root) {
   if (d.act === 'voteagainst') { A('vote', { id: +d.id, for: false }); return; }
   /* §4.10 上市募资：默认让出 25%（上限 35%，且不得掉到剩下一半以下）。 */
   if (d.act === 'ipo') { A('ipo', { give: 0.25 }); return; }
+  /* §4.9 主动联系：借钱 / 邀他入股 / 请他议事。一颗按钮一件事，参数写在 data-* 上。 */
+  if (d.act === 'contact') { A('contact', { toPid: d.to, kind: d.kind }); return; }
 
   if (d.qset) {
     const [cid, v] = d.qset.split(':');

@@ -19,6 +19,15 @@ Game.prototype.consolidated = function (p) {
     nav += (h.navSnapshot || 0) * (h.control == null ? 1 : h.control);
     debt += h.debt || 0;                                     // 收购来的公司：负债一并并表
   }
+  /* 我在**别人**公司里持有的股份（合资/参股）：按对方的**单体净资产**×持股计值。
+     ⚠ 这里用 this.nav(t) 而不是 this.consolidated(t)：
+       consolidated 会再往下展开一层，甲持乙、乙持甲就是无限递归。
+       只算一层（单体净资产）既不递归，也刚好与入股定价的口径对上。 */
+  for (const st of (p.stakes || [])) {
+    const t = this.s.players.find(x => x.id === st.targetPid);
+    if (!t || !t.alive) continue;            // 对方出局 ⇒ 这笔投资跟着归零
+    nav += this.nav(t) * (st.stake || 0);
+  }
   return { nav, debt };
 };
 
@@ -122,6 +131,18 @@ Game.prototype.capTable = function (owner, corpId) {
     if (stake <= 0) continue;
     rows.push({ pid: owner.id, name: owner.name, stake,
       control: h.control == null ? 1 : h.control, isHuman: !!owner.isHuman });
+  }
+  /* ② 别人手里握着、属于**这家公司**的股份（合资 / 参股）——
+     这才是多方名册的另一半（只看 holdings 永远只有一条，见下）。
+     同一人可能入股多次 ⇒ 按 pid 先合计再入名册，否则他会以两条出现、票比看起来比实际少。 */
+  for (const q of this.s.players) {
+    if (!q.alive || q.id === owner.id) continue;
+    let sum = 0;
+    for (const st of (q.stakes || [])) {
+      if (st && st.targetPid === owner.id) sum += (st.stake || 0);
+    }
+    if (!(sum > 0)) continue;
+    rows.push({ pid: q.id, name: q.name, stake: sum, control: 0, isHuman: !!q.isHuman });
   }
   rows.sort((a, b) => b.stake - a.stake);
   return { rows, total: 1 };
@@ -227,6 +248,39 @@ Game.prototype._payDividend = function (corpId, ratio, cap) {
     this._log('trade', '公司分钱：拿出 ' + money(distributable) + ' G 按股比发下去，' +
       holder.name + '自己拿到 ' + money(mineShare) + ' G', holder.id);
   }
+};
+
+/* ---- 4.6b 公司名录与实时名次（docs/19 §4.6）------------------------- */
+/* 全场公司一条一行的名录 + 名次。一次算完，UI 与守卫共用同一份 ——
+   ⚠ 榜必须用**同一口径**算所有人：统一用 consolidated()。
+     若“自己的身价按并表、NPC 的按单体”，名次就不可比了 —— 那是个假榜。 */
+Game.prototype.standings = function () {
+  const rows = [];
+  for (const p of this.s.players) {
+    if (!p.alive) continue;
+    let nav = 0, debt = 0;
+    try {
+      const sheet = this.consolidated(p);
+      nav = sheet.nav; debt = sheet.debt;
+    } catch (e) { nav = 0; debt = 0; }
+    const c = CORPS.find(x => x.id === p.corp) || {};
+    rows.push({
+      pid: p.id, name: p.name, corpId: p.corp, corpName: c.name || p.corp,
+      nav: Math.round(nav), debt: Math.round(debt), isHuman: !!p.isHuman,
+    });
+  }
+  rows.sort((a, b) => b.nav - a.nav);
+  for (let i = 0; i < rows.length; i++) rows[i].rank = i + 1;
+  return rows;
+};
+
+/* 让出 give 比例股份的**公允价**（docs/19 §4.6 pre-money / post-money）。
+   为什么不是 val × give：那样等于按出让前的估值卖新产生的股份，
+   出让方恒亏一截（IPO 初版就是这么写的，V3 那条守卫只是“涨了才算印钞”而没抓住“恒亏”）。
+   正确式子：P = val × g / (1 − g) ⇒ 成交后双方身价都刚好不变（乘数为 1 时）。 */
+Game.prototype.stakePrice = function (p, give) {
+  const g = clamp(give, 0, 0.999);
+  return Math.max(0, Math.floor(this.valuation(p) * g / (1 - g)));
 };
 
 /* 追保与破产（docs/13 §4.3）——「负债 ≠ 破产」的落点。
