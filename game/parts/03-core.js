@@ -189,6 +189,11 @@ Game.prototype._newPlayer = function (id, name, corpId, isHuman) {
        出局判据 = 所有持仓都破产（§7.4）；单公司破产 = 净资产跌破维持线且追保逾期（§4.3）。 */
     holdings: [{ corpId: corp.id, stake: 1, control: 1, debt: 0, bankrupt: false, acquiredAt: 0 }],
     cash: BAL.startCash + corp.start.cashMod,
+    /* 个人钱包（docs/19 §4.12）：从公司账上“拿走”的钱进这里。
+       ⚠ 它**不是**额外白得的一笔钱 —— 每进 1 G，须同时计一份负债（见 _a_take），
+         所以身价当场不变。这个字段存在的意义就是“拿钱要有对价”这件事能被审计。
+       旧存档没有这个键 ⇒ 读出来是 undefined ⇒ 全仓一律用 (p.personal || 0) 兼容。 */
+    personal: 0,
     debt: 0, deposit: 0,
     plots, storage: {}, storageCap: BAL.storageCap + corp.start.storageMod,
     avgCost: {}, realized: 0, reputation: 50,

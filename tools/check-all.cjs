@@ -31,6 +31,7 @@ const STEPS = [
   ['新手增收   ', 'node tools/newbie.test.cjs',           /主线是赚的|项失败/],
   ['持仓层     ', 'node tools/holdings.test.cjs',         /全部通过|项失败/],
   ['投入品层   ', 'node tools/inputs.test.cjs',           /全部通过|项失败/],
+  ['公司账     ', 'node tools/finance.test.cjs',          /全部通过|项失败/],
   ['迁移守卫·引擎', 'node tools/parts-verify.cjs',         /全部通过|失败/],
   ['迁移守卫·UI ', 'node tools/ui-verify.cjs',            /全部通过|失败/],
   ['660 局仿真 ', 'node tools/sim.cjs 60 8',              /不变量异常/],

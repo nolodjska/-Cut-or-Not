@@ -3,7 +3,16 @@ Game.prototype.consolidated = function (p) {
   const hs = (Array.isArray(p.holdings) && p.holdings.length)
     ? p.holdings.filter(h => !h.bankrupt)
     : [{ corpId: p.corp, control: 1, debt: 0 }];            // 旧存档兼容
-  let nav = this.nav(p);                                     // 主控公司走玩家自己的账
+  /* 主控公司按**自己实际持股比例**并表（docs/19 §4.12）。
+     为什么必须乘：不乘的话，“卖掉自己公司 30% 股份”会让个人现金增加、
+     而并表 NAV 一点不减 —— 卖自己的股份等于印钞（静默获利，最坏的一类 bug）。
+     stake 现在恒为 1 ⇒ 与旧口径逐位一致（有守卫锁这条等价性）。 */
+  const own = hs.find(h => h.corpId === p.corp);
+  const ownStake = own && own.stake != null ? own.stake : 1;
+  /* ⚠ 个人钱包**不按持股折算**：那笔钱是他自己的（只是同时欠着公司）。
+     它加在**并表**这一层（个人钱不进公司报表），所以是 + personal 而不是乘持股。 */
+  const personal = p.personal || 0;
+  let nav = this.nav(p) * ownStake + personal;   // 主控公司按持股并表 + 个人钱包全额
   let debt = (p.debt || 0) + this.shortLiability(p);         // 空头负债也是负债（与 debtRatio 同口径）
   for (const h of hs) {
     if (h.corpId === p.corp) continue;                       // 主控公司上面已计
@@ -11,6 +20,34 @@ Game.prototype.consolidated = function (p) {
     debt += h.debt || 0;                                     // 收购来的公司：负债一并并表
   }
   return { nav, debt };
+};
+
+/* 从公司拿钱（docs/19 §4.12 / §4.17）——**只能以股东借款的形式**，不能“搬走不还”。
+   现实依据：公司是独立法人，公司账上的钱不是股东的钱；股东直接把公司资金抽回
+   属于抽逃出资，违法。合法路径是借款（有息、有期、公允、披露）。
+   本作把这条做成**机制**而不是说明文本：
+     ① 提走多少，就欠公司多少 ⇒ 身价**当场不变**（拿钱不是印钞，这才是那个洞的堵法）
+     ② 上限 = 公司现金 × 我方持股 × 0.8（债权人保护：不能把公司掏空）
+     ③ 进 p.debt，参与后面所有负债判据（所以拿多了照样会被催债）
+   ⚠ 利润分配 / 减资属于§4.13 的决议事项，等票决系统落地后再接（现在是借款这一条）。 */
+Game.prototype._a_take = function (p, d) {
+  const own = (Array.isArray(p.holdings) ? p.holdings : []).find(h => h.corpId === p.corp);
+  const stake = own && own.stake != null ? own.stake : 1;
+  const cap = Math.max(0, Math.floor(p.cash * stake * 0.8));
+  /* 两种写法：① 给定 `amount`（测试与将来的输入框用）② 只给 `frac`（按钮用，默认全拿）。 */
+  const frac = d.frac == null ? 1 : Math.max(0, Math.min(1, d.frac));
+  const amt = d.amount != null ? Math.floor(d.amount) : Math.floor(cap * frac);
+  if (!(amt > 0)) return { ok: false, msg: '公司账上现在没多余的钱可以拿' };
+  if (amt > cap) {
+    return { ok: false, msg: '最多能拿走 ' + money(cap) + ' G —— 公司账上还得留着周转' };
+  }
+  p.cash -= amt;
+  p.personal = (p.personal || 0) + amt;
+  p.debt += amt;
+  p.shareholderLoan = (p.shareholderLoan || 0) + amt;
+  /* 文案只说“现象与代价”，不出现“股东借款/抽逃出资/法人财产”这类术语（lint-copy 会查）。 */
+  this._log('trade', p.name + '从公司账上拿走 ' + money(amt) + ' G，记在自己名下', p.id);
+  return { ok: true, msg: '拿走 ' + money(amt) + ' G。这笔记在你名下，是要还的 —— 所以你的身价没变' };
 };
 
 /* 追保与破产（docs/13 §4.3）——「负债 ≠ 破产」的落点。

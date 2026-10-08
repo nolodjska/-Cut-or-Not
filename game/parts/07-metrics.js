@@ -72,6 +72,11 @@ Game.prototype.fixedAssets = function (p) {
 Game.prototype.receivables = function (p) {
   let v = 0;
   for (const ln of (p.loansOut || [])) v += ln.principal * 0.9;
+  /* 股东欠公司的部分（§4.12）：这是**公司**的资产（公司对股东的债权）。
+     它必须计入，否则“从公司拿钱”会在账面上凭空少掉一笔 ——
+     个人钱包 +100、公司现金 −100、公司债权 +100，三者相抵才是“身价不变”。
+     最初漏了这一条，是 finance.test 的 F2 当场报的（所以它是不可省的）。 */
+  v += (p.shareholderLoan || 0);
   return v;
 };
 Game.prototype.nav = function (p) {

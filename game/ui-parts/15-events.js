@@ -102,6 +102,9 @@ if (d.root) {
      （这个类别由 tools/wiring-check.cjs 钉死：UI 渲染出的每个 data-act，
        必须在分派表里有对应的 `d.act === '…'` 分支。） */
   if (d.act === 'buildWorkshop') { A('buildWorkshop'); return; }
+  /* §4.12 从公司拿钱：默认拿满（= 公司现金 × 持股 × 0.8 的上限）。
+     它是**借款**、要还，所以身价当场不变 —— 拿钱不是印钞（见 `_a_take`）。 */
+  if (d.act === 'take') { A('take', {}); return; }
 
   if (d.qset) {
     const [cid, v] = d.qset.split(':');

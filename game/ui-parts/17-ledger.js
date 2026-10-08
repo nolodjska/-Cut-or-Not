@@ -127,7 +127,12 @@ function viewLedger() {
         '</div>' +
         '<div class="fact">' +
           (r.control >= 0.5
-            ? '<button class="btn p" data-enter="' + r.id + '">进入经营</button>'
+            ? '<button class="btn p" data-enter="' + r.id + '">进入经营</button>' +
+              /* §4.12：只在**自己主控**的那家公司上出现 —— “从公司拿钱”是股东与公司之间的事，
+                 参股的公司轮不到你插手。拿的是借款、要还，所以身价不变。
+                 ⚠ 用 data-act（不用自定义 data-*）：这样 wiring-check 会**自动验证**这颗按钮
+                   真的接到了分派表上 —— 当年“工坊修不了”就是一颗没人接的死按钮。 */
+              (r.mine ? '<button class="btn" data-act="take">从公司拿钱</button>' : '')
             : '<button class="btn" disabled>只参股，不下手</button>') +
         '</div>' +
       '</div>').join('') + '</div>' +
