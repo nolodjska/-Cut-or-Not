@@ -1,0 +1,454 @@
+/* ===== part: style-2-v3.css ===== */
+/* =====================================================================
+   v2 · 复古农商账本（换皮层）
+   方向：牛皮纸账本 + 油墨 + 铜钱，重拟物。
+   结构：纸(暖) 做页面基底；屏(冷) 做数据面板；金(贵) 仍只给结算。
+   约束：语义色 --up/--down/--gold/--accent/--purple 原样保留，只用于数据。
+   重要：docs/10 的「暗底≥88%/不新造主色」已获用户 2026-10-08 授权解除，本层即新版标准。
+   ===================================================================== */
+
+/* ---------- 1. 纸质基底与纹理 ---------- */
+html,body{background-color:var(--paper)}
+body{
+  color:var(--ink);
+  background-image:var(--tx-grain),linear-gradient(175deg,#efe4c6 0%,#e9dcbd 45%,#e0d0aa 100%);
+  background-attachment:fixed;
+}
+#app{background:transparent}
+
+/* ---------- 2. 顶栏：账本抬头（一条横墨线压住） ---------- */
+#top{
+  background:linear-gradient(180deg,#f4ecd6,#e9dcbd);
+  border-bottom:2px solid var(--ink);
+  box-shadow:0 2px 0 rgba(255,255,255,.5) inset,0 3px 10px rgba(84,61,39,.22);
+  backdrop-filter:none;
+}
+#navbig,#top .t,#top .big{font-family:var(--serif);letter-spacing:.02em}
+#navbig{
+  color:var(--ink);
+  text-shadow:0 1px 0 rgba(255,255,255,.6);
+}
+#daybar{background:var(--paper-lo);border:1px solid var(--rule)}
+#phase,#phasetag,#clock{color:var(--ink3);font-variant-numeric:tabular-nums}
+
+/* 顶栏里的钱数：账本上的墨字，不用屏上荧光色 */
+#top .v,#top .num{color:var(--ink);font-variant-numeric:tabular-nums}
+
+/* ---------- 3. 页签：账本底部的书脊签（等宽格子，当前页顶上压一条朱砂） ---------- */
+#tabs{
+  background:linear-gradient(180deg,#d4c29a,#e0d0aa);
+  border-top:2px solid var(--ink);
+  border-bottom:0;
+  padding:0 2px env(safe-area-inset-bottom);
+  gap:0;
+}
+.tab{
+  position:relative;
+  background:transparent;
+  border:none;
+  border-top:3px solid transparent;
+  border-radius:0;
+  color:var(--ink3);
+  font-family:var(--serif);
+  letter-spacing:.03em;
+  transform:none;
+  transition:color .14s ease,background-color .14s ease,border-color .14s ease;
+}
+.tab:hover{color:var(--ink);background:rgba(246,239,219,.45)}
+.tab.on{
+  color:var(--ink);
+  font-weight:700;
+  background:linear-gradient(180deg,#efe4c6,#f6efdb);
+  border-top-color:var(--seal);
+  box-shadow:inset 0 2px 5px rgba(84,61,39,.10);
+}
+/* 底栏不需要那条会呼吸的朱红短线了（顶上已有 3px 朱砂条），关掉免得一屏两处指示 */
+.tab.on::after{content:none}
+.tab .dot{background:var(--seal);box-shadow:0 0 0 2px rgba(168,52,42,.18)}
+
+/* ---------- 4. 卡片：一张张纸片（压痕 + 纸纹 + 微微翘边） ---------- */
+.card{
+  background-color:var(--panel);
+  background-image:var(--tx-grain);
+  border:1px solid var(--rule);
+  border-radius:var(--r2);
+  box-shadow:0 1px 0 rgba(255,255,255,.55) inset,0 1px 2px rgba(84,61,39,.16),0 6px 14px rgba(84,61,39,.10);
+}
+.ct{border-bottom:1px dashed var(--rule)}
+.ct h3{font-family:var(--serif);color:var(--ink);letter-spacing:.02em}
+.ct .sub{color:var(--ink3)}
+.ct h3::before{background:var(--seal);border-radius:1px;width:3px;height:14px}
+.line{border-bottom:1px solid var(--rule)}
+.line .k{color:var(--ink3)}
+.line .v{color:var(--ink)}
+.mono{font-variant-numeric:tabular-nums}
+
+/* ---------- 5. 按钮：铜扣 / 木牌 / 印章（重拟物：有厚度、按下会陷） ---------- */
+.btn{
+  border:1px solid var(--wood-lo);
+  border-radius:var(--r);
+  color:#f6efdb;
+  background:linear-gradient(180deg,#8a6a3f,#6b4f33);
+  text-shadow:0 1px 0 rgba(0,0,0,.35);
+  box-shadow:0 1px 0 rgba(255,255,255,.22) inset,0 2px 0 var(--wood-lo),0 2px 5px rgba(84,61,39,.28);
+  font-family:var(--serif);letter-spacing:.03em;
+}
+.btn:hover{filter:brightness(1.06)}
+.btn:active{
+  transform:translateY(2px);
+  box-shadow:0 1px 0 rgba(255,255,255,.16) inset,0 0 0 var(--wood-lo),0 1px 2px rgba(84,61,39,.28);
+}
+/* 种子/稻草色：农事 */
+.btn.g{
+  border-color:#7d5f10;color:#2a2000;
+  background:linear-gradient(180deg,#e6c268,#c9a069);text-shadow:0 1px 0 rgba(255,255,255,.35);
+  box-shadow:0 1px 0 rgba(255,255,255,.5) inset,0 2px 0 #7d5f10,0 2px 5px rgba(84,61,39,.28);
+}
+/* 朱砂印：确认 / 卖出 */
+.btn.d{
+  border-color:#7a2f22;color:#fdf3ef;
+  background:linear-gradient(180deg,#bd4438,#a8342a);
+  box-shadow:0 1px 0 rgba(255,255,255,.22) inset,0 2px 0 #7a2f22,0 2px 5px rgba(84,61,39,.28);
+}
+/* 墨青：买入 */
+.btn.p{
+  border-color:#22415c;color:#f2f7fc;
+  background:linear-gradient(180deg,#3f6f96,#2c5474);
+  box-shadow:0 1px 0 rgba(255,255,255,.22) inset,0 2px 0 #22415c,0 2px 5px rgba(84,61,39,.28);
+}
+/* 铜：稀有 / 金 */
+.btn.gold{
+  border-color:#6f5410;color:#2a2000;
+  background:linear-gradient(180deg,var(--brass-hi),var(--brass));text-shadow:0 1px 0 rgba(255,255,255,.35);
+  box-shadow:0 1px 0 rgba(255,255,255,.5) inset,0 2px 0 #6f5410,0 2px 5px rgba(84,61,39,.28);
+}
+.btn.sm{box-shadow:0 1px 0 rgba(255,255,255,.2) inset,0 1px 0 var(--wood-lo),0 1px 3px rgba(84,61,39,.25)}
+
+/* 小铜牌：chip / sbtn
+   坑：文字色原来写的 var(--ink2)，而「屏」作用域会把 --ink2 翻转成浅色；
+   但铜牌底板本身就是浅色 —— 用变量就变成浅底浅字（对比度审计实测 1.01）。
+   规律：**自带底色的构件，文字色一律写死；只有透明底、跟随父级的文本才用变量。** */
+.chip,.sbtn{
+  background:linear-gradient(180deg,#e6d8bd,#d5c39c);
+  border:1px solid var(--rule);color:#4b4030;
+  border-radius:var(--r);
+  box-shadow:0 1px 0 rgba(255,255,255,.5) inset,0 1px 2px rgba(84,61,39,.18);
+}
+/* 铜牌里的“（约 16 秒）”这类次文字：不能自己再取 var(--dim)，否则选中态（铜底）上就变成深底深字（实测 1.63）。
+   改为继承铜牌的文字色，只用透明度做层次。 */
+.chip .dim,.sbtn .dim{color:inherit;opacity:.72}
+.chip.on,.sbtn.on{
+  background:linear-gradient(180deg,var(--brass-hi),var(--brass));
+  border-color:#6f5410;color:#2a2000;font-weight:700;
+  box-shadow:0 1px 0 rgba(255,255,255,.45) inset,0 1px 2px rgba(84,61,39,.3);
+}
+
+/* ---------- 6. 地块：木牌（重拟物核心） ---------- */
+.plot{
+  background-color:var(--wood);
+  background-image:var(--tx-wood);
+  border:1px solid var(--wood-lo);
+  border-radius:var(--r2);
+  color:#f6efdb;
+  box-shadow:0 2px 0 var(--wood-lo),0 6px 14px rgba(84,61,39,.3),0 1px 0 rgba(255,255,255,.14) inset;
+}
+.plot .nm,.plot .cropname{color:#f6efdb;font-family:var(--serif);text-shadow:0 1px 2px rgba(0,0,0,.45)}
+.plot .meta{color:#d9c9a3;text-shadow:0 1px 1px rgba(0,0,0,.4)}
+.plot.empty{
+  background-image:repeating-linear-gradient(45deg,rgba(0,0,0,.12) 0 6px,transparent 6px 12px);
+  border-style:dashed;border-color:rgba(246,239,219,.4);color:#e6d8bd;
+}
+.plot .bar{background:#12181f;border:1px solid var(--wood-lo);border-radius:3px}
+.plot .ic{color:#e6d8bd}
+.plot.ready{outline:2px solid var(--straw);outline-offset:-2px}
+.badge{background:rgba(18,24,31,.72);border:1px solid rgba(246,239,219,.28);color:#f6efdb}
+.badge.auto{border-color:var(--brass-hi);color:var(--brass-hi)}
+.badge.up{border-color:var(--accent);color:#9fd0ff}
+
+/* ---------- 7. 「屏」：数据面板（冷）。语义色在这里才用满饱和度 ---------- */
+.crop{
+  background-color:#12181f;
+  background-image:var(--tx-grain);
+  border:1px solid #24303d;
+  border-radius:var(--r2);
+  color:#dbe6f1;
+  box-shadow:0 1px 0 rgba(255,255,255,.06) inset,0 0 0 3px rgba(84,61,39,.18),0 6px 16px rgba(84,61,39,.22);
+}
+.crop .hd .p,.crop h4,.crop .nm{font-family:var(--serif);color:#eef4fa}
+.crop .stats{color:var(--dim)}
+.crop canvas{opacity:.95}
+/* 纸面上的涨跌文字用「墨版」语义色（对比度需要），屏内保持原荧光色 */
+.up{color:var(--up-ink)}
+.down{color:var(--down-ink)}
+.gold{color:var(--gold-ink)}
+.crop .up,.screen .up{color:var(--up)}
+.crop .down,.screen .down{color:var(--down)}
+.crop .gold,.screen .gold{color:var(--gold)}
+
+/* ---------- 8. 输入框：修「深底深字」硬伤 ----------
+   原因：ui.js 有 7 处内联硬编码 background:#0d131a，index.html 的输入框也用
+   background:#0d131a + color:var(--text)；--text 变墨色后会深底深字，完全看不见。
+   这些是内联样式，非 !important 压不过去。做成"纸面输入框"，在纸卡与屏面板上都成立。 */
+.qty input,.seedin input,#view input,#seedin,
+.qty input:focus,.seedin input:focus,#view input:focus{
+  background:var(--paper-hi)!important;
+  color:var(--ink)!important;
+  border:1px solid var(--rule)!important;
+  border-radius:var(--r)!important;
+  box-shadow:0 1px 2px rgba(84,61,39,.18) inset!important;
+}
+#view input::placeholder,.seedin input::placeholder{color:var(--ink3)!important;opacity:1}
+
+/* ---------- 9. 日志：油墨条（保留暗，作为"屏"的另一半） ---------- */
+#feed{
+  background:#12181f;
+  background-image:var(--tx-grain);
+  border-top:2px solid var(--wood-lo);
+  color:#cbd8e6;
+  box-shadow:0 -3px 10px rgba(84,61,39,.2);
+}
+#feed .lg{color:#a9b8c8}
+#feed .lg.trade{color:#cfe0f0}
+#feed .lg.intel{color:#9fd0ff}
+
+/* ---------- 10. 表格：账本格线（横线 + 朱红竖线） ---------- */
+.tbl th,.tbl td{border-bottom:1px solid var(--rule)}
+.tbl th{color:var(--ink3);font-weight:500}
+.tbl td{color:var(--ink2)}
+.tbl tr.me td{color:var(--seal);font-weight:700}
+.quote{border-left:3px solid var(--seal)}
+.quote b{color:var(--ink)}
+
+/* ---------- 11. 浮层：翻开一本账（暗幕保留一点"夜"的味道） ---------- */
+.overlay{background:rgba(38,28,16,.72);backdrop-filter:blur(3px) saturate(.85)}
+.modal{
+  background-color:var(--panel);
+  background-image:var(--tx-grain);
+  border:1px solid var(--ink2);
+  border-radius:var(--r2);
+  box-shadow:0 0 0 4px rgba(246,239,219,.5),0 18px 50px rgba(30,20,8,.45);
+}
+.modal h2{font-family:var(--serif);color:var(--ink)}
+.modal .lead{color:var(--ink3)}
+.corp{
+  background:linear-gradient(180deg,#efe4c6,#e2d4b1);
+  border:1px solid var(--rule);color:var(--ink2);
+  box-shadow:0 1px 0 rgba(255,255,255,.5) inset,0 2px 4px rgba(84,61,39,.12);
+}
+.corp .t{color:var(--ink);font-family:var(--serif)}
+.corp .ds{color:var(--ink3)}
+.corp .tag{background:var(--paper-lo);color:var(--ink3);border:1px solid var(--rule)}
+.corp.on{
+  border-color:var(--seal);background:linear-gradient(180deg,#f6e3d6,#eccfc0);
+  box-shadow:0 0 0 2px rgba(168,52,42,.35),0 2px 6px rgba(84,61,39,.18);
+}
+.corp.on .t{color:var(--seal)}
+.tcard{
+  background:linear-gradient(180deg,#efe4c6,#e2d4b1);
+  border:1px solid var(--rule);color:var(--ink2);
+  box-shadow:0 1px 0 rgba(255,255,255,.5) inset,0 2px 4px rgba(84,61,39,.12);
+}
+.tcard .n{color:var(--ink);font-family:var(--serif)}
+.tcard .d{color:var(--ink3)}
+.tcard .tree{color:var(--ink3);opacity:.75}
+.tcard.common{border-left:3px solid var(--ink3)}
+.tcard.rare{border-left:3px solid #2c5474}
+.tcard.epic{border-left:3px solid var(--brass)}
+
+/* ---------- 12. 提示条 ---------- */
+#toasts{filter:drop-shadow(0 6px 14px rgba(30,20,8,.35))}
+.toast{
+  background-color:var(--paper-hi);background-image:var(--tx-grain);
+  border:1px solid var(--ink2);color:var(--ink);
+  border-radius:var(--r);
+  box-shadow:0 1px 0 rgba(255,255,255,.6) inset;
+}
+.toast.ok{border-color:#2f6b45;color:#1a6b42}
+.toast.err{border-color:#8c2b23;color:#9e2f28}
+.toast.info{border-color:#22415c;color:#22415c}
+.warn{
+  background:linear-gradient(180deg,#f7e2c9,#f0d3b0);
+  border:1px solid #b5716a;border-left:4px solid var(--seal);color:#7a2f22;
+}
+.banner{
+  background:linear-gradient(90deg,#f3e6c2,#efe4c6);
+  border:1px solid var(--brass);border-left:4px solid var(--brass);color:#6a4c0c;
+}
+.empty{color:var(--ink3)}
+.empty::before{content:"（此处尚空）";display:block;font-family:var(--serif);opacity:.6;margin-bottom:4px}
+
+/* ---------- 13. 结算：幕布 + 金（全站唯一允许的饱和红与金） ---------- */
+#awards h1{font-family:var(--serif);color:var(--ink)}
+#awards .sub{color:var(--ink3)}
+.aw{
+  background-color:var(--panel);background-image:var(--tx-grain);
+  border:1px solid var(--rule);border-radius:var(--r2);
+  box-shadow:0 1px 0 rgba(255,255,255,.5) inset,0 3px 8px rgba(84,61,39,.14);
+}
+.aw .who{color:var(--ink3)}
+.aw .ttl{font-family:var(--serif);color:var(--ink)}
+.aw .why{color:var(--ink3)}
+.aw .say{border-left:3px solid var(--seal);color:var(--ink2)}
+.aw.chief{
+  border-color:var(--brass);
+  background:linear-gradient(180deg,#7a2f2a,#5d221e);
+  color:#f6efdb;
+  box-shadow:0 0 0 1px rgba(214,180,92,.4),0 8px 22px rgba(30,20,8,.4);
+}
+.aw.chief .ttl{color:var(--brass-hi);text-shadow:0 1px 3px rgba(0,0,0,.5)}
+.aw.chief .who,.aw.chief .why{color:#e2c9b6}
+.aw.chief .say{border-left-color:var(--brass-hi);color:#f7e8d4}
+.hero{border-radius:var(--r2) var(--r2) 0 0}
+.evcard{border-color:var(--brass)}
+.evcard .evtxt{background:linear-gradient(180deg,rgba(18,24,31,.4),rgba(18,24,31,.96))}
+.evcard .evname{color:var(--brass-hi);font-family:var(--serif)}
+
+/* ---------- 14. 动效：复古拟真 ----------
+   ⚠ 关键约束：render() 每 120ms 重写一次 #view/#toasts 的 innerHTML，
+   任何放在这些容器里的入场动画都会每帧重播、看起来像抽搐。
+   所以动效只做两类：
+     (a) 交互驱动（:hover/:active/:focus）—— 不重播；
+     (b) 挂在「只在变化时才重写」的元素上（#tabs 已被源码守卫保护、#ovStart/#ovEnd 只建一次）。
+   #view 内的元素一律不加 animation。 */
+@keyframes stampIn{
+  0%{opacity:0;transform:scale(1.12) rotate(-1.5deg)}
+  60%{opacity:1;transform:scale(.97) rotate(1.5deg)}
+  100%{opacity:1;transform:scale(1) rotate(0)}
+}
+@keyframes pageOpen{
+  0%{opacity:0;transform:translateY(14px) scale(.965)}
+  100%{opacity:1;transform:none}
+}
+@keyframes curtainDrop{
+  0%{opacity:0;transform:translateY(-10px) scaleY(.9)}
+  100%{opacity:1;transform:none}
+}
+@keyframes inkSeal{
+  0%{opacity:.35}
+  100%{opacity:.85}
+}
+.toast{animation:stampIn .34s cubic-bezier(.2,1.5,.45,1) both}
+#ovStart .modal{animation:pageOpen .3s ease-out both}
+#ovEnd .modal{animation:pageOpen .34s ease-out both}
+#ovEnd .aw.chief{animation:curtainDrop .5s cubic-bezier(.2,1.3,.4,1) both}
+/* 标签当前页的朱红短线：缓慢呼吸，暗示"这一页翻开了" */
+.tab.on::after{animation:inkSeal 2.6s ease-in-out infinite alternate}
+/* 地块成熟：只在 ready 类上做"呼吸"；该类由状态决定，跨帧稳定，不会每帧重播 */
+@keyframes readyPulse{0%{outline-color:rgba(201,160,105,.35)}100%{outline-color:rgba(201,160,105,1)}}
+.plot.ready{animation:readyPulse 1.8s ease-in-out infinite alternate}
+
+/* ---------- 15. 响应式：已删除 ----------
+   这里原来是一套「480/768/1024/1440/1920 五档，逐档加宽 #app 并把 #view 变成 2~4 栏栅格」
+   的规则。它有两个致命问题：
+     ① 五档全部写 `#app{max-width:...}`，而后面 v3 层又写了一次 `#app{max-width:1440px}`；
+        同选择器同优先级，后者胜 —— 五档的 max-width 一条都没生效，是纯粹的噪声。
+     ② 把手机竖列摊成 3 栏后，栅格默认 `align-items:stretch` 会强制同行等高：
+        1440 下农田页三张卡片全被拉成 452×446，其中「我的仓库」内容本来只有 146px，
+        多出 300px 纯空白；卡片下方还有 42% 的死区。
+   结论：手机优先的 H5 不做第二套桌面排版。全宽度都是同一条纵向流，见 §19。 */
+
+/* ---------- 16. 无障碍 ---------- */
+.btn:focus-visible,.chip:focus-visible,.sbtn:focus-visible,.tab:focus-visible,
+.corp:focus-visible,.tcard:focus-visible,input:focus-visible,select:focus-visible{
+  outline:2px solid var(--seal);outline-offset:2px;
+}
+@media (prefers-reduced-motion:reduce){
+  .toast,#ovStart .modal,#ovEnd .modal,#ovEnd .aw.chief,.tab.on::after,.plot.ready{
+    animation:none!important;
+  }
+}
+
+/* ---------- 17. 漏网组件修补（对原文件做的一次全量审计结果） ---------- */
+
+/* 缺陷 1（系统性）：我把 --text/--dim/--dim2/--ink 系全翻成了深色，
+   但「屏」(.crop)、油墨条(#feed)、木牌(.plot)、事件图(.evcard)、幕布(.aw.chief)
+   仍然是深底 —— 这些容器里任何用 var(...) 取色或直接继承的组件都会变成「深底深字」。
+   第一轮我只反了 --text/--dim/--dim2，漏了 --ink/--ink2/--ink3，
+   而 .chip 用 var(--ink2)、.line .v 用 var(--ink)，于是行情页的筹码与价格数字全是隐形的
+   （对比度审计实测：chip 1.76、价格 1.15）。现在把 ink 系一并反转。 */
+/* 2026-10-08：`#feed`（§18）与 `.crop`（v3 §C，行情卡改纸面）都已改为纸面，
+   必须从这份「深色作用域」名单里移除 —— 否则它们会把 --ink/--ink2/--ink3 翻成浅色，
+   叠在新纸底上就是浅底浅字。
+   用户 2026-10-08 截图反馈「市场板块文字看不清」，实测根因就是：
+   `.crop` 已是纸底却还挂着这份变量翻转，于是价格 `.px`、作物名、`.stats`、`.dl`、
+   以及 `#view input` 的文字全部变成近白色（#e8eff6）叠在米色纸上。
+   判定规律：**只要一个容器改成纸面，就必须从这份名单里摘掉；
+   名单里只保留仍是深底的容器（.plot 木牌 / .evcard .evtxt / .aw.chief 幕布）。** */
+.plot,.evcard .evtxt,.aw.chief,.plot .bar{
+  --text:#e6edf3;--dim:#8fa3b8;--dim2:#5d6f83;
+  --ink:#e8eff6;--ink2:#cfdceb;--ink3:#9fb2c6;
+}
+
+/* 缺陷 2（优先级看错）：原文件是 `.plot .badge`（两个类），我写的是 `.badge`（一个类），
+   优先级低一级，压根没生效 —— 夜色的深底徽章就这样活了下来，我上一轮还误以为是覆盖成功的。 */
+.plot .badge{
+  background:rgba(18,24,31,.78);
+  border:1px solid rgba(246,239,219,.3);
+  color:#f6efdb;
+}
+.plot .badge.auto{border-color:var(--brass-hi);color:var(--brass-hi)}
+.plot .badge.up{border-color:var(--accent);color:#9fd0ff}
+
+/* 缺陷 3（纯遗漏）：`.quote` 的深底 #0f1620 我从头到尾没覆盖过，
+   只加了 border-left；而它的 color 是 var(--dim) —— 变量一改就是「深底深字」，引文隐形。 */
+/* `.quote` 是「嵌在屏里的纸片」：自带纸底，所以必须在内部把变量重置回纸模式，
+   否则会继承外层 .crop 的浅色变量 → 浅底浅字（审计实测：quote 里的 b 1.01、.dim 2.05）。 */
+.quote{
+  --ink:#2a2318;--ink2:#4b4030;--ink3:#7d6c50;
+  --dim:#6b5c42;--dim2:#6f6047;--text:#2a2318;
+  background:linear-gradient(180deg,#f6efdb,#efe4c6);
+  border:1px dashed var(--rule);border-left:3px solid var(--seal);
+  color:#4b4030;
+}
+.quote b{color:#2a2318}
+
+/* 缺陷 4：进度条仍是夜色的冷蓝→紫，与账本调性不合（这是数据，所以用铜/朱砂，不动语义色） */
+#dayfill{background:linear-gradient(90deg,var(--brass),var(--seal))}
+
+/* 缺陷 5：`.empty` 之前的 ::before 是在已有文案上又叠了一行，重了；改为只做占位提示 */
+.empty::before{content:none}
+
+/* ---------- 18. 日志条改成「账本流水」（2026-10-08 用户反馈：还是暗色、布局奇怪） ----------
+   原来它是 §9 的"油墨条"：#12181f 深底 + 每行 nowrap 省略号 + max-height:78px。两个问题：
+     ① 深底与整站的纸面调性冲突（用户明确要求不要再留暗色）；
+     ② 布局：4 行 × (11px×1.6=17.6px) = 70.4px，加上下内边距 ≈ 88px，
+        被 max-height:78px 硬切 —— 底部永远挂着一条被裁一半的字，看着就像坏了。
+   改法：纸底 + 高度由内容决定（只留 3 条）+ 每行色点标记 + 行间虚线，做成账本流水。 */
+#feed{
+  background:var(--paper-lo);
+  background-image:var(--tx-fiber);
+  border-top:2px solid var(--ink);
+  color:var(--ink2);
+  box-shadow:0 -3px 10px rgba(84,61,39,.16);
+  padding:4px 12px;
+  font-size:11px;line-height:1.5;
+  /* 高度交给布局层：默认一行，展开时由 #feed.open 给 max-height（见 §19） */
+}
+#feed .lg{
+  display:flex;align-items:baseline;gap:6px;
+  padding:3px 0;
+  white-space:normal;         /* 覆盖基础样式的 nowrap：不再用省略号截断消息 */
+  overflow:visible;text-overflow:clip;
+  border-bottom:1px dashed rgba(195,177,138,.75);
+  color:var(--ink2);
+}
+#feed .lg:last-child{border-bottom:0}
+#feed .lg::before{
+  content:"";flex:0 0 auto;width:5px;height:5px;border-radius:50%;
+  background:var(--ink3);transform:translateY(-1px);
+}
+/* 纸面上的语义色一律用「墨版」，保证对比度 */
+#feed .lg.good::before{background:var(--up-ink)}
+#feed .lg.bad::before{background:var(--down-ink)}
+#feed .lg.event::before,#feed .lg.money::before{background:var(--gold-ink)}
+#feed .lg.auction::before{background:#6b4a9e}
+#feed .lg.trade::before{background:#2c5474}
+#feed .lg.intel::before{background:#2f6b8a}
+#feed .lg.system::before{background:var(--seal)}
+#feed .lg.good{color:var(--up-ink)}
+#feed .lg.bad{color:var(--down-ink)}
+#feed .lg.event,#feed .lg.money{color:var(--gold-ink)}
+#feed .lg.auction{color:#6b4a9e}
+#feed .lg.trade{color:#2c5474}
+#feed .lg.intel{color:#2f6b8a}
+#feed .lg.system{color:var(--ink)}

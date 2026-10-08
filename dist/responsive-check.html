@@ -1,0 +1,30 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8">
+<title>割不割 · 响应式自检</title>
+<style>
+html,body{margin:0;background:#151a1f;color:#8fa3b8;font:12px -apple-system,"PingFang SC",sans-serif}
+#bar{padding:8px 12px;border-bottom:1px solid #22303f;color:#cfd8e3}
+#box{overflow:hidden;padding:12px}
+iframe{border:1px solid #22303f;border-radius:12px;display:block;background:#0b0f14;transform-origin:top left}
+#tip{padding:0 12px 12px;color:#5d6f83;line-height:1.7}
+</style></head><body>
+<div id="bar">响应式自检</div>
+<div id="box"><iframe id="f"></iframe></div>
+<div id="tip">用 <code>?w=390</code> / <code>?w=768</code> / <code>?w=1280</code> 切换断点。
+iframe 内部视口就是 w，媒体查询按 w 生效；外层用 transform 缩放以便整幅可见（缩放不影响断点判断）。</div>
+<script>
+var q = new URLSearchParams(location.search);
+var w = parseInt(q.get('w') || '390', 10);
+var h = parseInt(q.get('h') || (w < 600 ? 844 : w < 1000 ? 1024 : 900), 10);
+var scale = Math.min(1, (window.innerWidth - 24) / w);
+var f = document.getElementById('f');
+f.style.width = w + 'px';
+f.style.height = h + 'px';
+f.style.transform = 'scale(' + scale + ')';
+document.getElementById('box').style.width = (w * scale) + 'px';
+document.getElementById('box').style.height = (h * scale) + 'px';
+f.src = 'demo.html' + (q.get('q') ? '?' + q.get('q') : '?auto=1&corp=grow&view=farm&warm=120');
+document.getElementById('bar').textContent =
+  '响应式自检 · 视口 ' + w + '×' + h + ' · 显示缩放 ' + scale.toFixed(2) +
+  ' · 断点' + (w < 768 ? '手机(<768)' : w < 1024 ? '平板(768–1023)' : w < 1440 ? '桌面(≥1024)' : '超宽(≥1440)');
+</script>
+</body></html>

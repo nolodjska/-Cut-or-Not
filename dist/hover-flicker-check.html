@@ -1,0 +1,115 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>HOVER running</title>
+<style>
+  html,body{margin:0;background:#101010;color:#e8e8e8;font:12px/1.6 ui-monospace,Consolas,monospace;overflow:hidden}
+  iframe{position:absolute;left:0;top:0;width:900px;height:880px;border:0}
+  #out{position:absolute;left:910px;top:0;width:520px;height:880px;overflow:auto;white-space:pre-wrap;padding:8px}
+</style>
+<pre id="out">loading…</pre>
+<!-- iframe 放在 (0,0)、不缩放：这样 iframe 内部坐标 == 顶层页面坐标，方便用真实鼠标按坐标悬停 -->
+<iframe id="f" src="demo.html?auto=1&corp=grow&pace=1.6&view=market&cb=hover"></iframe>
+<script>
+/* 「hover 按钮一直闪动」的复现 + 验证。
+   病因假设：render() 每 120ms 重写 #view 的 innerHTML，里面的按钮被销毁重建；
+   而 .btn/.chip 带 transition + :hover{filter:brightness(...)} ——
+   每次重建都重新解析一次 :hover，brightness 反复过渡 → 鼠标不动也一直闪。
+   验证分两层：
+     静态 —— 过渡/动画为 0；所有能命中 #view 的 :hover 滤镜/位移规则，特异性都低于我的守卫规则。
+     动态 —— 用真实鼠标（CDP，isTrusted）悬停 8 秒，逐帧采样 computed filter，
+             要求取值集合只有一个（恒定），同时要求确实观察到了节点被重建（否则测试没意义）。 */
+const F = document.getElementById('f'), OUT = document.getElementById('out');
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const T = []; const ok = (n, p, x) => T.push((p ? 'PASS  ' : 'FAIL  ') + n + (x ? '   ' + x : ''));
+
+function spec(sel){
+  const s = sel.replace(/\[[^\]]*\]/g, '.x').replace(/::?[a-z-]+(\([^)]*\))?/g, '.x');
+  const id = (s.match(/#[\w-]+/g) || []).length;
+  const cls = (s.match(/\.[\w-]+/g) || []).length;
+  const typ = (s.match(/(^|[\s>+~])[a-z][\w-]*/gi) || []).length;
+  return [id, cls, typ];
+}
+const gt = (a, b) => a[0] !== b[0] ? a[0] > b[0] : a[1] !== b[1] ? a[1] > b[1] : a[2] > b[2];
+const isNeutral = v => { const t = String(v || '').trim(); return t === '' || t === 'none'; };
+
+(async () => {
+  await new Promise(r => F.addEventListener('load', r, { once: true }));
+  const win = F.contentWindow, doc = win.document;
+  await sleep(1500);
+
+  /* 提前把目标坐标写进标题：外部可以用真实鼠标按这个坐标悬停，
+     不用先拉一大坨元素列表来定位（也避免猜坐标）。 */
+  {
+    const e0 = doc.querySelector('#view .btn');
+    const r0 = e0 ? e0.getBoundingClientRect() : null;
+    window.__TARGET__ = r0 ? { x: Math.round(r0.x + r0.width / 2), y: Math.round(r0.y + r0.height / 2) } : null;
+    document.title = window.__TARGET__ ? ('HOVER at ' + window.__TARGET__.x + ',' + window.__TARGET__.y) : 'HOVER nosrc';
+  }
+
+  const nodes = () => [...doc.querySelectorAll('#view .btn, #view .chip')];
+  const all = nodes();
+  ok('找到 #view 内的按钮', all.length >= 1, 'n=' + all.length);
+
+  // 静态 1：无过渡
+  const withT = all.filter(el => win.getComputedStyle(el).transitionDuration.split(',').some(v => parseFloat(v) > 0));
+  ok('无任何过渡（transitionDuration 全为 0）', withT.length === 0,
+     withT.length ? 'n=' + withT.length : '检查了 ' + all.length + ' 个');
+
+  // 静态 2：无动画
+  const withA = all.filter(el => win.getComputedStyle(el).animationName !== 'none');
+  ok('无任何 animation', withA.length === 0, withA.length ? 'n=' + withA.length : 'ok');
+
+  // 静态 3：所有能命中 #view 的 :hover 滤镜/位移规则，特异性都必须低于守卫规则
+  const guard = spec('#view .btn:hover');
+  const dangerous = [];
+  for (const ss of doc.styleSheets) {
+    let rules; try { rules = ss.cssRules; } catch (e) { continue; }
+    for (const r of rules || []) {
+      if (!r.selectorText || r.selectorText.indexOf(':hover') < 0) continue;
+      if (isNeutral(r.style.filter) && isNeutral(r.style.transform)) continue;
+      for (const raw of r.selectorText.split(',')) {
+        const s = raw.trim();
+        if (s.indexOf(':hover') < 0) continue;
+        const stripped = s.replace(/:hover/g, '');
+        let hit = false;
+        try { hit = all.some(el => el.matches(stripped)); } catch (e) { }
+        if (!hit) continue;
+        if (gt(spec(s), guard)) {
+          dangerous.push(s + ' {filter:' + r.style.filter + ';transform:' + r.style.transform + '}');
+        }
+      }
+    }
+  }
+  ok('能命中 #view 的 hover 滤镜/位移规则均已被覆盖', dangerous.length === 0,
+     dangerous.length ? JSON.stringify(dangerous) : '守卫特异性=' + guard.join('/'));
+
+  // 动态：真实鼠标悬停期间逐帧采样
+  const samples = new Map(); let changes = 0, last = null; const seen = new Set();
+  const t0 = performance.now();
+  await new Promise(res => {
+    (function loop() {
+      const el = doc.querySelector('#view .btn');
+      if (el) {
+        seen.add(el);
+        const f = win.getComputedStyle(el).filter;
+        samples.set(f, (samples.get(f) || 0) + 1);
+        if (last !== null && f !== last) changes++;
+        last = f;
+      }
+      if (performance.now() - t0 < 8000) requestAnimationFrame(loop); else res();
+    })();
+  });
+
+  const distinct = [...samples.keys()];
+  const frames = [...samples.values()].reduce((a, b) => a + b, 0);
+  ok('悬停期间 filter 恒定（无闪动）', distinct.length === 1,
+     '取值集合=' + JSON.stringify(distinct) + ' 变化次数=' + changes);
+  ok('按钮确实在被重建（证明测试有效）', seen.size > 1, '观察到的不同节点数=' + seen.size);
+
+  const fail = T.filter(x => x.startsWith('FAIL')).length;
+  OUT.textContent = '悬停闪动检查：' + T.length + ' 项，失败 ' + fail + ' 项\n\n' + T.join('\n') +
+    '\n\n目标坐标(供真实鼠标悬停) = ' + JSON.stringify(window.__TARGET__) +
+    '\n采样帧数 = ' + frames + '，节点重建数 = ' + seen.size;
+  document.title = 'HOVER done fail=' + fail;
+})().catch(e => { OUT.textContent = 'ERR ' + e.message; document.title = 'HOVER error'; });
+</script>

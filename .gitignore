@@ -1,0 +1,23 @@
+# --- 运行时 / 临时产物 ---
+# .qi_checkpoints.jsonl：本工具链的回滚检查点，2.7MB 且每次编辑都在变，
+# 属于本机运行态，不进版本库（它是"操作日志"不是"源码"）。
+.qi_checkpoints.jsonl
+
+# --- 日志与临时文件 ---
+*.log
+*.tmp
+
+# --- 依赖（本项目是纯静态页 + .cjs 脚本，正常没有依赖目录）---
+node_modules/
+package-lock.json
+
+# --- 系统 / 编辑器 ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# 说明：dist/（构建产物，约 0.8MB）与 shots/（截图）**故意保留**：
+# dist 里是可直接双击运行的单文件 Demo，是这个项目的"成品"。
+# 若日后不想让每次 check-all 都弄脏工作区，取消下面这行的注释即可。
+# dist/

@@ -1,0 +1,14 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8">
+<title>割不割 · 预览</title>
+<style>
+html,body{margin:0;background:#151a1f;font:12px -apple-system,"PingFang SC",sans-serif}
+#bar{color:#8fa3b8;padding:6px 10px}
+#wrap{display:flex;justify-content:center;padding:0 8px 16px}
+iframe{border:1px solid #22303f;border-radius:14px;display:block;width:390px;height:844px;background:#0b0f14}
+</style></head><body>
+<div id="bar">手机视口预览 · 390 × 844 · 把 <code>?auto=1&amp;view=market</code> 之类的参数直接加到本页地址后面即可</div>
+<div id="wrap"><iframe id="f"></iframe></div>
+<script>
+var q = location.search.slice(1);
+document.getElementById('f').src = 'demo.html' + (q ? '?' + q : '');
+</script></body></html>

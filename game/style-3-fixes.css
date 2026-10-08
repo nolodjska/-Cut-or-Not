@@ -1,0 +1,328 @@
+/* ===== part: style-3-fixes.css ===== */
+/* =====================================================================
+   v3 · 组件级视觉审计与响应式布局
+   目标：完整游戏画布，不做后台壳；所有组件先统一到白天账本，再按尺寸排版。
+   这一层放在全部旧规则之后，作为当前权威覆盖层。
+   ===================================================================== */
+
+/* ---------- A. 完整画布：桌面利用空间，但不制造侧栏壳 ---------- */
+html,body{
+  min-width:0;
+  background:#cdb88b;
+  color:var(--ink);
+}
+body{
+  overflow-x:hidden;
+  background-image:
+    linear-gradient(90deg,rgba(84,61,39,.08) 1px,transparent 1px),
+    linear-gradient(180deg,#d9c69b 0%,#cdb88b 100%);
+  background-size:100% 100%,100% 100%;
+}
+#app{
+  width:100%;
+  max-width:430px;
+  margin:0 auto;
+  min-width:0;
+  background:var(--paper);
+}
+
+/* ---------- B. 底部页签：等宽格子，不是可横滑的索引签 ----------
+   原来的写法（flex-start + min-width:76px + overflow-x:auto）在 390px 上把 7 个页签
+   排成 534px，溢出的 144px 需要用户自己发现可以横滑 —— 拍卖、图鉴两页默认在屏幕外，
+   而滚动条在手机上是隐藏的，没有任何提示。改成等宽铺满后一页都不藏。 */
+#tabs{
+  display:flex;
+  flex-direction:row;
+  align-items:stretch;
+  justify-content:space-between;
+  width:100%;
+  min-width:0;
+  overflow:hidden;
+}
+.tab{flex:1 1 0;min-width:0;text-align:center}
+#view{
+  min-width:0;
+  min-height:0;
+  background:
+    linear-gradient(rgba(195,177,138,.14) 1px,transparent 1px),
+    var(--paper);
+  background-size:100% 28px,100% 100%;
+}
+
+/* ---------- C. 纸面组件：彻底清掉旧夜间底色 ---------- */
+.card,.crop,.aw,.tcard,.corp{
+  background-color:var(--paper-hi);
+  background-image:var(--tx-grain);
+  color:var(--ink);
+  border-color:var(--rule);
+  box-shadow:0 1px 0 rgba(255,255,255,.62) inset,0 2px 5px rgba(84,61,39,.16),0 7px 15px rgba(84,61,39,.08);
+}
+.card{border-radius:var(--r2)}
+.crop{
+  border-radius:var(--r2);
+  box-shadow:0 1px 0 rgba(255,255,255,.62) inset,0 0 0 3px rgba(107,79,51,.12),0 5px 13px rgba(84,61,39,.13);
+}
+.crop .hd .p,.crop h4,.crop .nm{color:var(--ink);text-shadow:none}
+.crop .px{color:var(--ink);font-family:var(--serif)}
+.crop .stats,.crop .stats b{color:var(--ink2)}
+.crop .stats b{font-weight:700}
+.crop .dl{color:var(--ink3)}
+.crop .up{color:var(--up-ink)}
+.crop .down{color:var(--down-ink)}
+.crop .gold{color:var(--gold-ink)}
+.crop canvas{
+  background:linear-gradient(180deg,#f6efdb,#efe4c6);
+  border:1px solid var(--rule);
+  border-radius:4px;
+}
+
+/* 报价框是纸上记录，不再用深色终端框 */
+.quote{
+  background:repeating-linear-gradient(0deg,transparent 0 21px,rgba(195,177,138,.28) 22px),#f6efdb;
+  color:var(--ink2);
+  border:1px dashed var(--rule);
+  border-left:3px solid var(--seal);
+  box-shadow:0 1px 2px rgba(84,61,39,.1) inset;
+}
+.quote b{color:var(--ink)}
+/* 对比度审计（dist/contrast-audit.html）剩的一类问题：报价框里的次要文字
+   ——「（手里还没有 N 单位可卖）」在条纹纸上偏灰，实测 2.41。
+   --ink3(#7d6c50) 算在纯纸底上本来是 5.2，但审计按“条纹最深色”当背景就掉到 2.4；
+   压深到 #4f4229，两种背景假设下都 >= 4.6，不靠猜。 */
+.quote .dim{color:#4f4229}
+
+/* 日志改为账本底部的纸带；警告和事件仍用语义色区分 */
+#feed{
+  background:linear-gradient(180deg,#e0d0aa,#d6c399);
+  background-image:var(--tx-fiber);
+  color:var(--ink2);
+  border-top:2px solid var(--wood);
+  box-shadow:0 -2px 8px rgba(84,61,39,.14);
+}
+#feed .lg,#feed .lg.system{color:var(--ink2)}
+#feed .lg.good{color:var(--up-ink)}
+#feed .lg.bad{color:var(--down-ink)}
+#feed .lg.event,#feed .lg.money{color:var(--gold-ink)}
+#feed .lg.auction{color:#6947a8}
+#feed .lg.trade,#feed .lg.intel{color:#285879}
+
+/* 统一旧组件残留的边线和文字 */
+.line,.tbl th,.tbl td{border-color:var(--rule)}
+.line .k,.tbl th{color:var(--ink3)}
+.line .v,.tbl td{color:var(--ink2)}
+.tbl tr.me td{color:var(--seal)}
+.hint,.empty{color:var(--ink3)}
+.dim{color:var(--ink3)}
+.gold{color:var(--gold-ink)}
+.up{color:var(--up-ink)}
+.down{color:var(--down-ink)}
+
+/* ---------- D. 控件：浅色纸面、铜色状态、内联样式也要被覆盖 ---------- */
+.sbtn,.chip{
+  color:#4b4030;
+  background:linear-gradient(180deg,#f0e4c6,#d9c9a3);
+  border-color:var(--rule);
+}
+.sbtn.on,.chip.on{
+  color:#2a2000;
+  background:linear-gradient(180deg,#e6c268,#b88c35);
+  border-color:#7d5f10;
+}
+.btn{color:#f6efdb}
+.btn.p{color:#f2f7fc}
+.btn.g,.btn.gold{color:#2a2000}
+
+/* ui.js 里的进度条是内联样式，必须用 !important 才能完成换肤 */
+#view .bar{
+  background:#d0bc8c!important;
+  border:1px solid var(--rule);
+  box-shadow:0 1px 2px rgba(84,61,39,.18) inset;
+}
+#view .bar>i{
+  background:linear-gradient(90deg,#a97b3f,#5a9a61)!important;
+}
+#view .crop .bar>i{background:linear-gradient(90deg,#b88c35,#5a9a61)!important}
+#view input,#view select,.qty input,.seedin input{
+  background:#f6efdb!important;
+  color:var(--ink)!important;
+  border-color:var(--rule)!important;
+}
+#view input::placeholder,.seedin input::placeholder{color:var(--ink3)!important}
+
+/* 警告、横幅、提示框全部回到暖纸语义，不留旧夜间块 */
+.warn{
+  background:linear-gradient(180deg,#f7e2c9,#efd0ab);
+  color:#7a2f22;
+  border-color:#b5716a;
+}
+.banner{
+  background:linear-gradient(90deg,#f3e6c2,#e5d4a8);
+  color:#6a4c0c;
+  border-color:var(--brass);
+}
+.toast{
+  background:#f6efdb;
+  color:var(--ink);
+  border-color:var(--rule);
+  box-shadow:0 4px 14px rgba(84,61,39,.25);
+}
+.toast.ok{color:var(--up-ink);border-color:#5a9a61}
+.toast.err{color:var(--down-ink);border-color:#b5716a}
+.toast.info{color:#285879;border-color:#6e9ab4}
+
+/* ---------- E. 地块：保留木土质感，但去掉接近黑色的夜间观感 ---------- */
+.plot{
+  background-color:#79583a;
+  background-image:
+    linear-gradient(135deg,rgba(255,225,170,.12),transparent 44%),
+    var(--tx-wood);
+  border-color:#5a3c25;
+  box-shadow:0 2px 0 #543d27,0 5px 12px rgba(84,61,39,.25),0 1px 0 rgba(255,240,200,.18) inset;
+}
+.plot.empty{
+  background-color:#80603f;
+  background-image:repeating-linear-gradient(45deg,rgba(45,28,14,.16) 0 6px,transparent 6px 12px);
+}
+.plot .bar{background:#4f3825!important}
+.plot .meta{color:#ead7ad}
+.plot .nm{color:#fff4d8}
+.plot .ic{color:#fff4d8}
+.plot .badge{background:#5f432b;color:#f6efdb}
+
+/* ---------- F. 浮层与结算也必须遵守同一套纸面 ---------- */
+.overlay{background:rgba(55,39,22,.58)}
+.modal{background-color:var(--paper-hi);color:var(--ink);border-color:var(--ink2)}
+.modal h2,.corp .t,.tcard .n{color:var(--ink)}
+.modal .lead,.corp .ds,.tcard .d,.tcard .tree{color:var(--ink3)}
+.corp,.tcard{background:linear-gradient(180deg,#f1e7ce,#e2d4b1);color:var(--ink2)}
+.corp.on{background:linear-gradient(180deg,#f6e3d6,#eccfc0);border-color:var(--seal)}
+.aw{background-color:var(--paper-hi);color:var(--ink)}
+.aw .who,.aw .why{color:var(--ink3)}
+.aw .ttl{color:var(--ink)}
+.evcard .evtxt{background:linear-gradient(180deg,rgba(42,35,24,.08),rgba(42,35,24,.88));color:#fff4d8}
+
+/* =====================================================================
+   19 · 布局权威层（当前唯一权威；上面各层的布局声明一律作废）
+   =====================================================================
+   契约 —— 改布局只能改这里和文件顶部的基础层，不要再往中间插层：
+
+     1. 只有一条纵向流，#app 最宽 430px、水平居中。桌面不做第二套排版。
+        理由：这是手机优先的 H5（docs/07 目标平台是微信小程序/H5）。把手机竖列摊成
+        3 栏栅格，会把空白造进「卡片内部」—— 那是看起来像坏掉的地方；
+        而留在游戏框外的空白，一眼就是刻意留的。
+     2. #view 永远是单列 block，卡片高度 = 内容高度。永远不用栅格：
+        栅格默认 align-items:stretch，会把同行的短卡片拉长去填满最高那张。
+     3. 纵向顺序固定：#top → #view → #feed → #tabs。
+     4. 常驻高度预算（390×844 实测）：#top ≈ 91px、#feed 一行 ≈ 26px、#tabs ≈ 51px，
+        合计 ≈ 168px（20%）。改造前是 276px（33%），内容区 569px → 676px。
+     5. 想加宽屏排版之前先自问：「这条规则会不会让卡片内部出现空白？」
+        会，就别加。
+   ===================================================================== */
+
+/* 宽屏：两侧只做装饰（装订线 + 投影），游戏本身仍然是那条 430px 的列 */
+@media (min-width:480px){
+  #app{
+    border-left:1px solid var(--rule);
+    border-right:1px solid var(--rule);
+    box-shadow:0 0 0 1px rgba(84,61,39,.26),0 0 34px rgba(84,61,39,.24);
+  }
+  /* 宽屏上页签格子有富余，字号可以回到正常大小 */
+  .tab{font-size:12.5px}
+}
+
+/* 地块永远 2 列。
+   改造前：平板 768–1023 是 3 列，桌面 ≥1440 反而退回 2 列 —— 屏幕越大格子越小，是倒挂。 */
+#plots{grid-template-columns:repeat(2,minmax(0,1fr))}
+
+/* 浮层只覆盖游戏列：否则在 1440 桌面上弹窗会飘到屏幕正中，跟游戏完全脱开 */
+.overlay{left:50%;right:auto;width:100%;max-width:430px;transform:translateX(-50%)}
+
+/* 开局浮层：「开始赛季」是真固定页脚，滚动只发生在 .mbody 里。
+   问题（2026-10-08 试玩反馈 + 同日真机复测）：
+   6 家公司卡 + 节奏 + 世界种子把内容撑到 ≈965px，而桌面视口 934px、手机 844px，
+   唯一的“开始”按钮被切在折叠线下。
+   第一版用 .goFoot{position:sticky} 把按钮钉在滚动视口底部 —— 按钮确实常驻了，
+   但 sticky 是**重叠式**的：它会把滚动内容压在身下。复测结果：
+     · 有「继续上局」时，整排「节奏」被压到只剩 2px，看起来像不存在；
+     · 没有时，被压的是「世界种子」输入框 —— 一个可编辑字段躺在按钮底下。
+   所以改成真正的「固定页脚 + 独立滚动体」：
+     · .modal 变成 flex 列，自己不滚动（overflow:hidden 仍能按 border-radius 裁掉 .hero）；
+     · .mbody 承担滚动，右侧滚动条也只出现在正文区；
+     · .goFoot 回到普通流（static），**永远不会覆盖任何内容**。
+   这比 sticky 多一步 DOM 包装，但“按钮底下有东西”这类 bug 从根上不可能再出现。 */
+#ovStart .modal{
+  max-height:calc(100dvh - 24px);
+  display:flex;flex-direction:column;
+  overflow:hidden;
+}
+#ovStart .mbody{overflow:auto;flex:1 1 auto;min-height:0}
+#ovStart .goFoot{
+  position:static;
+  background:var(--paper-hi);
+  margin:0 -15px;padding:8px 15px 6px;
+}
+
+/* 整页级空状态居中撑满。
+   修的是「拍卖会没开场」那一屏：内容只有 160px 高，却躺在 660px 的内容区里 ——
+   71% 是空白，三行字孤零零贴在顶部，看起来像页面没加载完。
+   只命中 #view 的直接子元素：卡片内部的小空状态（图鉴的「还没有记录」）不受影响。 */
+#view > .empty{
+  min-height:calc(100% - 12px);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:18px 14px;
+}
+
+/* 防止未来旧规则再次把 tabs 变成纵向壳 */
+#tabs{grid-area:auto!important;flex-direction:row!important}
+
+/* ---------- H. 修「鼠标停在按钮上会一直闪动」（2026-10-08 用户反馈） ----------
+   病因：render() 每 120ms 重写一次 #view 的 innerHTML，里面的按钮每 120ms 被销毁重建；
+   而「观感增强」层给 .btn/.chip 挂了 transition（含 filter .16s）+ :hover{filter:brightness(1.15)}。
+   于是每次重建，浏览器都要重新解析一次 :hover 样式，brightness 在 1.0↔1.15 之间反复过渡，
+   只要鼠标不动就会一直闪。:active 的 transform 也带 .08s 过渡，同理。
+   这与 docs/12 §14 的既有约束同源：「#view 内的元素一律不加 animation」——
+   本质上应该是「#view 内的元素不得带任何随重渲染而重播的过渡/动画」。
+   修法：
+     · #view 内的 .btn/.chip 去掉 transition 与 hover 滤镜；
+     · 悬停反馈只留给“不会被重渲染”的元素（.sbtn 顶栏 / .tab 页签 / 浮层里的 .corp、.tcard）。
+   保留 #view 按钮的 :active 按下反馈（因 transition 已移除，变成瞬时，既跟手又不闪）。 */
+#view .btn,#view .chip,#view .sbtn{transition:none!important}
+#view .btn:hover,#view .chip:hover{filter:none}
+
+/* ---------- J. 一级根屏「总账」（docs/20 §1.1 / §2.1） ----------
+   三个钱数不合屏（§0）：本屏只出现【身价】（集团层并表），
+   公司净资产只进公司卡。
+   颜色只用 opacity 与 --paper-hi（后者已在 .goFoot 用过，确定存在），
+   不引新配色变量 —— 猜变量名会在换肤时静默失效。 */
+.ledger{padding:10px 12px 16px}
+.worth{margin:2px 0 10px;padding:12px 14px;border-radius:10px;background:var(--paper-hi)}
+.worth .wlab{font-size:11.5px;opacity:.7;letter-spacing:2px}
+.worth .wnum{font-size:34px;line-height:1.15;font-weight:700}
+.worth .wnum small{font-size:14px;margin-left:3px;opacity:.75}
+.worth .wsub{margin-top:4px;font-size:11.5px;opacity:.75;line-height:1.5}
+.belt{display:flex;flex-direction:column;gap:6px;margin-bottom:10px}
+.alert{display:block;width:100%;text-align:left;font-size:12.5px;padding:8px 10px;border-radius:8px;
+  border:1px solid rgba(180,40,40,.35);background:rgba(180,40,40,.07);color:inherit}
+.firms{display:flex;flex-direction:column;gap:8px}
+.firm{padding:10px 12px;border-radius:10px;background:var(--paper-hi)}
+.firm .ft{display:flex;align-items:center;gap:6px;font-size:14px;font-weight:700}
+.firm .fl{display:flex;align-items:center;gap:6px;margin:5px 0 7px;font-size:11.5px;opacity:.75}
+.lamp{display:inline-block;flex:0 0 auto;width:9px;height:9px;border-radius:50%}
+.lamp.ok{background:#4a8f4a}
+.lamp.mid{background:#c8a03a}
+.lamp.bad{background:#b43c3c}
+.lines{margin-top:12px;font-size:11.5px;opacity:.7}
+.lines .ln{font-weight:700}
+.crumb{margin-right:6px;padding:1px 7px;border-radius:6px;border:1px solid rgba(0,0,0,.18);
+  background:transparent;font-size:12px;color:inherit}
+
+/* 公司卡星级一行（docs/19 §2）。
+   只调字号与透明度，不引新配色变量 —— 纸感主题的变量名不在这个文件里，
+   写死颜色容易跟主题脱节，用 opacity 继承卡片自身的墨色最安全。 */
+#ovStart .starrow{
+  margin-top:4px;
+  font-size:11px;
+  line-height:1.5;
+  letter-spacing:.3px;
+  opacity:.75;
+}

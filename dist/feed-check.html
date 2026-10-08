@@ -1,0 +1,89 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>FEED running</title>
+<style>
+  html,body{margin:0;background:#101010;color:#e8e8e8;font:12px/1.6 ui-monospace,Consolas,monospace}
+  iframe{position:absolute;left:-20000px;top:0;width:900px;height:900px;border:0}
+  pre{white-space:pre-wrap;padding:10px}
+</style>
+<pre id="out">loading…</pre>
+<iframe id="f" src="demo.html?auto=1&corp=grow&pace=1.6&view=farm&cb=feedcheck"></iframe>
+<script>
+/* 日志条（#feed）客观检查。
+   用户反馈两条：① 还是暗色 ② 布局奇怪（怀疑是 max-height 硬切半行）。
+   看不到截图，就用度量说话：底色亮度、是否还写死高度、每行是否还被截断、
+   条数、溢出、以及每条文字的对比度。 */
+const F = document.getElementById('f'), OUT = document.getElementById('out');
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const T = []; const ok = (n, p, extra) => T.push((p ? 'PASS  ' : 'FAIL  ') + n + (extra ? '   ' + extra : ''));
+
+function srgb(c){ c/=255; return c<=0.03928 ? c/12.92 : Math.pow((c+0.055)/1.055, 2.4); }
+function lum(c){ return 0.2126*srgb(c.r)+0.7152*srgb(c.g)+0.0722*srgb(c.b); }
+function parseCol(s){
+  const m = String(s).match(/rgba?\(([^)]+)\)/); if(!m) return null;
+  const p = m[1].split(',').map(parseFloat);
+  return p.length >= 3 ? { r:p[0], g:p[1], b:p[2], a:p.length>3?p[3]:1 } : null;
+}
+
+(async () => {
+  await new Promise(r => F.addEventListener('load', r, { once: true }));
+  const win = F.contentWindow, doc = win.document;
+  await sleep(1200);
+
+  const feed = doc.querySelector('#feed');
+  if (!feed) { OUT.textContent = 'ERR: 没找到 #feed'; document.title = 'FEED error'; return; }
+
+  const cs = win.getComputedStyle(feed);
+  const bg = parseCol(cs.backgroundColor);
+  const Lbg = bg ? lum(bg) : 0;
+
+  // ① 不再暗
+  const cssBg = cs.backgroundColor;
+  ok('#feed 底色是浅色（非暗色）', Lbg > 0.5, 'computed=' + cssBg + ' 亮度=' + Lbg.toFixed(3));
+
+  // ② 不再写死高度硬切
+  ok('#feed max-height 已放开', cs.maxHeight === 'none', 'maxHeight=' + cs.maxHeight);
+  ok('#feed overflow 不再裁剪', cs.overflow === 'visible' || cs.overflowY === 'visible', 'overflow=' + cs.overflow);
+
+  // ③ 行内不再 nowrap 截断
+  const lg = doc.querySelector('#feed .lg');
+  if (lg){
+    const lcs = win.getComputedStyle(lg);
+    ok('日志行允许换行（不再 nowrap）', lcs.whiteSpace === 'normal', 'whiteSpace=' + lcs.whiteSpace);
+    ok('日志行不再 ellipsis 截断', lcs.textOverflow === 'clip', 'textOverflow=' + lcs.textOverflow);
+    ok('日志行是色点+文字两栏', lcs.display === 'flex', 'display=' + lcs.display);
+  } else {
+    T.push('SKIP  当前没有日志行（还没产生消息），跳过行样式检查');
+  }
+
+  // ④ 条数 <= 3
+  const n = doc.querySelectorAll('#feed .lg').length;
+  ok('日志最多保留 3 条', n <= 3, 'n=' + n);
+
+  // ⑤ 内容没有被切掉
+  const clipped = feed.scrollHeight - feed.clientHeight;
+  ok('内容未被裁剪（无半行）', clipped <= 1,
+     'scrollH=' + feed.scrollHeight + ' clientH=' + feed.clientHeight + ' 差=' + clipped);
+
+  // ⑥ 每条文字的对比度
+  const bad = [];
+  doc.querySelectorAll('#feed .lg').forEach(el => {
+    const fg = parseCol(win.getComputedStyle(el).color);
+    if (!fg) return;
+    const L1 = lum(fg);
+    const ratio = (Math.max(L1, Lbg) + 0.05) / (Math.min(L1, Lbg) + 0.05);
+    if (ratio < 3.0) bad.push({ t: el.textContent.slice(0,18), fg: win.getComputedStyle(el).color, r: Math.round(ratio*100)/100 });
+  });
+  ok('日志文字对比度全部 >= 3.0', bad.length === 0,
+     bad.length ? JSON.stringify(bad) : '检查了 ' + doc.querySelectorAll('#feed .lg').length + ' 条');
+
+  // 附：把实际日志内容打出来，方便肉眼确认布局
+  const lines = [...doc.querySelectorAll('#feed .lg')]
+    .map((el,i) => '  ' + (i+1) + '. [' + el.className.replace('lg ','') + '] ' + el.textContent);
+
+  const fail = T.filter(t => t.startsWith('FAIL')).length;
+  OUT.textContent = '日志条检查：' + T.length + ' 项，失败 ' + fail + ' 项\n\n' + T.join('\n') +
+    '\n\n当前实际消息（' + lines.length + ' 条）：\n' + (lines.join('\n') || '  （空）');
+  document.title = 'FEED done fail=' + fail;
+})().catch(e => { OUT.textContent = 'ERR ' + e.message; document.title = 'FEED error'; });
+</script>

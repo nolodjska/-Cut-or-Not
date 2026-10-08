@@ -1,0 +1,132 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>AUDIT running</title>
+<style>
+  html,body{margin:0;background:#101010;color:#e8e8e8;font:12px/1.55 ui-monospace,Consolas,monospace}
+  iframe{position:absolute;left:-20000px;top:0;width:1024px;height:768px;border:0}
+  pre{white-space:pre-wrap;padding:10px}
+</style>
+<pre id="out">loading…</pre>
+<iframe id="f" src="demo.html?auto=1&corp=grow&view=farm"></iframe>
+<script>
+/* 对比度审计 v2：找出「深底深字 / 浅底浅字」。
+   v1 的缺陷：不认识渐变。像 .btn 的底色是 background-image:linear-gradient(...)，
+   background-color 其实是 transparent，v1 就向上找到父卡片，把木牌按钮误报成"浅底浅字"。
+   v2 修法：把元素自身的渐变停色也算作背景候选，取「所有候选里最差的那个」做判定。 */
+const F = document.getElementById('f'), OUT = document.getElementById('out');
+
+function srgb(c){ c/=255; return c<=0.03928 ? c/12.92 : Math.pow((c+0.055)/1.055, 2.4); }
+function lum(c){ return 0.2126*srgb(c.r)+0.7152*srgb(c.g)+0.0722*srgb(c.b); }
+function hex2rgb(h){
+  h = h.replace('#','');
+  if (h.length === 3) h = h.split('').map(x=>x+x).join('');
+  if (h.length !== 6) return null;
+  return { r:parseInt(h.slice(0,2),16), g:parseInt(h.slice(2,4),16), b:parseInt(h.slice(4,6),16), a:1 };
+}
+function parseCol(s){
+  s = String(s);
+  if (s[0] === '#') return hex2rgb(s);
+  const m = s.match(/rgba?\(([^)]+)\)/); if(!m) return null;
+  const p = m[1].split(',').map(x=>parseFloat(x));
+  if (p.length < 3 || p.some(isNaN)) return null;
+  return { r:p[0], g:p[1], b:p[2], a:p.length>3 ? p[3] : 1 };
+}
+/* 收集元素自身的背景候选：background-color + 渐变里的所有停色 */
+function ownBgs(el, win){
+  const cs = win.getComputedStyle(el), out = [];
+  const c = parseCol(cs.backgroundColor);
+  if (c && c.a > 0.15) out.push(c);
+  const bi = cs.backgroundImage;
+  if (bi && bi !== 'none'){
+    const m = bi.match(/rgba?\([^)]+\)|#[0-9a-fA-F]{3,8}/g) || [];
+    for (const s of m){ const p = parseCol(s); if (p && p.a > 0.15) out.push(p); }
+  }
+  return out;
+}
+function bgCandidates(el, win){
+  let n = el;
+  while (n && n.nodeType === 1){
+    const b = ownBgs(n, win);
+    if (b.length) return b;
+    n = n.parentElement;
+  }
+  return [{ r:255, g:255, b:255, a:1 }];
+}
+function label(el){
+  let s = el.tagName.toLowerCase();
+  if (el.id) s += '#' + el.id;
+  else if (typeof el.className === 'string' && el.className.trim())
+    s += '.' + el.className.trim().split(/\s+/).slice(0,2).join('.');
+  return s;
+}
+function audit(win, view, acc){
+  const doc = win.document;
+  for (const el of doc.querySelectorAll('body *')){
+    const t = (el.textContent || '').trim();
+    if (!t) continue;
+    let hasTextChild = false;
+    for (const c of el.children){ if ((c.textContent||'').trim()){ hasTextChild = true; break; } }
+    if (hasTextChild) continue;
+    const cs = win.getComputedStyle(el);
+    if (cs.display === 'none' || cs.visibility === 'hidden') continue;
+    if (parseFloat(cs.opacity || '1') < 0.1) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width < 2 || r.height < 2) continue;
+    const fg = parseCol(cs.color); if (!fg) continue;
+    const L1 = lum(fg);
+    // 取所有背景候选里最难读的那个（渐变的浅端最容易暴露浅底浅字）
+    let worst = null;
+    for (const bg of bgCandidates(el, win)){
+      const L2 = lum(bg);
+      const ratio = (Math.max(L1,L2) + 0.05) / (Math.min(L1,L2) + 0.05);
+      if (!worst || ratio < worst.ratio) worst = { ratio, L2, bg };
+    }
+    if (worst && worst.ratio < 3.0){
+      acc.push({
+        view, sel: label(el), txt: t.slice(0,22),
+        fg: cs.color, bg: 'rgb(' + [worst.bg.r|0, worst.bg.g|0, worst.bg.b|0].join(',') + ')',
+        ratio: Math.round(worst.ratio*100)/100,
+        dd: (L1 < 0.25 && worst.L2 < 0.25), ll: (L1 > 0.7 && worst.L2 > 0.7)
+      });
+    }
+  }
+}
+(async () => {
+  await new Promise(r => F.addEventListener('load', r, { once: true }));
+  const win = F.contentWindow, doc = win.document;
+  await new Promise(r => setTimeout(r, 700));
+  const acc = [];
+
+  audit(win, '开局浮层', acc);
+
+  const go = doc.querySelector('#go');
+  if (go){ go.click(); await new Promise(r => setTimeout(r, 1000)); }
+  const pause = doc.querySelector('.sbtn[data-sp="0"]');
+  if (pause){ pause.click(); await new Promise(r => setTimeout(r, 300)); }
+
+  for (const v of ['farm','make','market','intel','bank','auction','codex']){
+    const tab = doc.querySelector('#tabs .tab[data-view="' + v + '"]');
+    if (!tab) continue;
+    tab.click();
+    await new Promise(r => setTimeout(r, 400));
+    audit(win, v, acc);
+  }
+
+  /* 同类问题合并：同一个选择器 + 同色组合只报一条，其余计数 */
+  const groups = new Map();
+  for (const a of acc){
+    const k = a.sel + '|' + a.fg + '|' + a.bg;
+    if (!groups.has(k)) groups.set(k, { ...a, n:1, views:new Set([a.view]), sample:a.txt });
+    else { const g = groups.get(k); g.n++; g.views.add(a.view); }
+  }
+  const lines = [...groups.values()]
+    .sort((x,y)=>x.ratio-y.ratio)
+    .map(g => 'x' + g.n + '  ' + g.sel + '  fg=' + g.fg + ' on bg=' + g.bg +
+              '  ratio=' + g.ratio + (g.dd ? '  <-- 深底深字' : '') + (g.ll ? '  <-- 浅底浅字' : '') +
+              '\n     样例: ' + g.sample + '   视图: ' + [...g.views].join(','));
+
+  OUT.textContent = '审计 v2 完成：对比度<3.0 的元素共 ' + acc.length + ' 个，归并为 ' + groups.size + ' 类问题\n\n' +
+    (lines.join('\n') || '（无，全部达标）');
+  document.title = 'AUDIT done issues=' + acc.length + ' groups=' + groups.size;
+})().catch(e => { OUT.textContent = 'ERR ' + e.message; document.title = 'AUDIT error'; });
+</script>

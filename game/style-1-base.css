@@ -1,0 +1,266 @@
+/* ===== part: style-1-base.css ===== */
+/* ===== 复古农商账本 · 设计令牌 =====
+   变量名沿用旧的（--bg/--panel/--line/--text…），所以整套组件会自动换皮，
+   不需要逐个选择器重写 —— 这是把风险降到最低的换肤方式。
+
+   说明：docs/10 §1.2「暗底 ≥88%」与 §1.3「不新造主色」在本版按用户 2026-10-08 的
+   明确授权（Q1-B / Q2「完全可以大换样」）调整。协调办法不是推翻 docs/10，而是兑现它
+   的「三个温度」：纸(暖) 做页面基底，屏(冷) 做数据面板，金(贵) 仍然只给结算。
+   语义色 --up/--down/--gold/--accent/--purple 一个都没改，仍按 §1.3 的
+   「语义色 / 自然色分离」只用于数据，绝不用在自然物上。 */
+:root{
+  /* —— 纸与墨（暖）：对应 docs/10 的「土」域 —— */
+  --bg:#e9dcbd; --panel:#f1e7ce; --panel2:#e2d4b1; --line:#c3b18a;
+  --text:#2a2318; --dim:#6b5c42; --dim2:#6f6047;
+  --paper:#e9dcbd; --paper-hi:#f6efdb; --paper-lo:#d9c9a3; --paper-shadow:#b8a67e;
+  --ink:#2a2318; --ink2:#4b4030; --ink3:#7d6c50;
+  --rule:#c3b18a; --rule-red:#b5716a;
+  --wood:#6b4f33; --wood-lo:#543d27; --brass:#9c7b2e; --brass-hi:#d6b45c; --copper:#8c6a3f;
+  --seal:#a8342a; --curtain:#7a2f2a;
+  /* —— 自然色（土域）：只用于插画，禁用于数据（docs/10 §1.3）—— */
+  --soil:#6b4f33; --straw:#c9a069; --leaf:#5aa863;
+  /* —— 屏（冷）：数据面板基底。语义色一个不改（docs/10 §1.3 硬约束）—— */
+  --screen:#121820; --screen2:#1a222c; --sline:#2a3646;
+  --up:#35d07f; --down:#ff5c5c; --gold:#f5c451; --accent:#4aa8ff; --purple:#a97bff;
+  /* —— 纸上可读的语义色变体：只给「纸面上的文字」用，图表仍用上面的原色 ——
+     原因：--up/--down 是给深底设计的高亮色，直接放在浅纸面上对比度不足。 */
+  --up-ink:#1a6b42; --down-ink:#9e2f28; --gold-ink:#7d5e10;
+  --r:3px; --r2:9px;
+  /* 账本标题用宋体（系统栈，不引字体文件，符合 docs/10 §1.4 的 0 成本方案） */
+  --serif:"Songti SC","STSong","Source Han Serif SC","Noto Serif SC",SimSun,"Noto Serif CJK SC",serif;
+  /* —— 质感：全部内联 SVG 噪点，不引外部图片，保住单文件交付 —— */
+  --tx-grain:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23g)' opacity='.055'/%3E%3C/svg%3E");
+  --tx-fiber:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.02 .55' numOctaves='3'/%3E%3C/filter%3E%3Crect width='220' height='220' filter='url(%23f)' opacity='.07'/%3E%3C/svg%3E");
+  --tx-wood:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='w'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.012 .35' numOctaves='4'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23w)' opacity='.16'/%3E%3C/svg%3E");
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0;height:100%;overflow-x:hidden}
+#app{overflow-x:hidden}
+body{
+  background:var(--bg);color:var(--text);
+  font:13px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  overflow:hidden;
+}
+/* 布局契约（唯一权威，见文件末尾 §19）：
+   这是手机优先的 H5，桌面不做第二套排版 —— 全宽度都是同一条纵向流。
+   子元素顺序 = #top / #view / #feed / #tabs；#tabs 是底栏，不是顶栏索引签。 */
+#app{display:flex;flex-direction:column;height:100%;width:100%;max-width:430px;margin:0 auto;position:relative}
+button{font-family:inherit}
+.up{color:var(--up)} .down{color:var(--down)} .dim{color:var(--dim)} .gold{color:var(--gold)}
+.mono{font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
+
+/* ---------- 顶栏 ---------- */
+#top{padding:calc(env(safe-area-inset-top) + 6px) 12px 5px;background:linear-gradient(180deg,#101821,#0d131a);border-bottom:1px solid var(--line);flex:0 0 auto}
+.row{display:flex;align-items:center;gap:8px}
+.between{justify-content:space-between}
+#clock{font-size:12px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+#clock b{color:var(--text)}
+#speedbar{display:flex;gap:4px;flex:0 0 auto}
+.sbtn{background:#1b2532;border:1px solid var(--line);color:var(--dim);border-radius:8px;padding:0 11px;height:36px;font-size:11px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+.sbtn.on{background:var(--accent);border-color:var(--accent);color:#04121f;font-weight:600}
+/* 净资产与四个指标压在同一行：手机竖屏一行放得下，省掉一整行高度 */
+#toprow2{margin-top:3px}
+#navwrap{display:flex;align-items:baseline;gap:5px;min-width:0}
+#navbig{font-size:21px;font-weight:700;letter-spacing:-.3px;line-height:1.15;white-space:nowrap}
+#navbig small{font-size:10px;font-weight:400;color:var(--dim);margin-left:3px}
+#navlab{font-size:9.5px;color:var(--dim);white-space:nowrap}
+#navmeta{display:flex;align-items:baseline;gap:9px;font-size:10.5px;color:var(--dim);white-space:nowrap;flex:0 0 auto}
+#navmeta b{font-weight:600}
+#daybar{height:3px;background:#1b2532;border-radius:2px;margin-top:6px;overflow:hidden}
+#dayfill{height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--purple));transition:width .3s}
+/* 阶段句平时是淡色提示；倒计时/拍卖这类时效信息由 ui.js 打上 data-urgent 加粗 */
+#phasetag{font-size:11.5px;color:var(--gold);margin-top:3px;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#phasetag[data-urgent]{font-weight:700;color:var(--down-ink)}
+
+/* ---------- 标签 ---------- */
+/* 底栏页签：等宽格子。8 个页签在 390px 上每格 48px、360px 上 45px，两字标签放得下，
+   所以既不横滑也不隐藏 —— 之前 7 个页签 534px 塞进 390px，有 2 页默认在屏幕外。 */
+#tabs{display:flex;gap:0;padding:0 2px env(safe-area-inset-bottom);background:#0d131a;border-top:1px solid var(--line);border-bottom:0;flex:0 0 auto}
+.tab{flex:1 1 0;min-width:0;padding:9px 2px 8px;min-height:50px;font-size:11.5px;color:var(--dim);background:transparent;border:0;border-top:3px solid transparent;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tab.on{color:var(--text);border-top-color:var(--accent);font-weight:600}
+.tab .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--gold);margin-left:4px;vertical-align:middle}
+
+/* ---------- 内容 ---------- */
+#view{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;padding:10px 10px 10px;-webkit-overflow-scrolling:touch}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:10px;margin-bottom:9px}
+.card.pad0{padding:0;overflow:hidden}
+.ct{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.ct h3{margin:0;font-size:13px;font-weight:600}
+.ct .sub{font-size:11px;color:var(--dim)}
+.hint{font-size:11px;color:var(--dim2);line-height:1.5;margin-top:6px}
+.btn{background:#1e2b3b;border:1px solid var(--line);color:var(--text);border-radius:9px;padding:10px 12px;min-height:42px;font-size:12.5px;cursor:pointer;font-weight:500;display:inline-flex;align-items:center;justify-content:center}
+.btn:active{transform:scale(.97)}
+.btn.p{background:var(--accent);border-color:var(--accent);color:#04121f;font-weight:700}
+.btn.g{background:var(--up);border-color:var(--up);color:#04180e;font-weight:700}
+.btn.d{background:var(--down);border-color:var(--down);color:#1a0505;font-weight:700}
+.btn.gold{background:var(--gold);border-color:var(--gold);color:#1a1204;font-weight:700}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn.sm{padding:8px 10px;min-height:37px;font-size:11.5px;border-radius:8px}
+.btn.wide{width:100%;display:block;text-align:center}
+.btnrow{display:flex;gap:6px;flex-wrap:wrap}
+
+/* 地块 */
+#plots{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.plot{background:var(--panel2);border:1px solid var(--line);border-radius:11px;padding:9px;position:relative;min-height:104px;display:flex;flex-direction:column}
+.plot.ready{border-color:var(--up);box-shadow:0 0 0 1px rgba(53,208,127,.25)}
+.plot.empty{border-style:dashed;border-color:#2b3a4c}
+.plot .ic{font-size:22px;line-height:1}
+.plot .nm{font-size:12px;font-weight:600;margin-top:2px}
+.plot .meta{font-size:10px;color:var(--dim);margin-top:2px}
+.plot .bar{height:4px;background:#0d131a;border-radius:2px;margin:7px 0 6px;overflow:hidden}
+.plot .bar i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--up));width:0}
+.plot .badge{position:absolute;top:7px;right:7px;font-size:9px;padding:1px 5px;border-radius:5px;background:#22303f;color:var(--dim)}
+.plot .badge.auto{background:var(--purple);color:#13081f}
+.plot .badge.up{background:var(--gold);color:#1a1204}
+.plot .acts{margin-top:auto;display:flex;gap:5px}
+.plot .acts .btn{flex:1;text-align:center}
+
+/* 市场 */
+.crop{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:10px;margin-bottom:9px}
+.crop .hd{display:flex;align-items:flex-start;gap:9px}
+.crop .hd .ic{font-size:24px}
+.crop .hd .p{flex:1;min-width:0}
+.crop .px{font-size:19px;font-weight:700}
+.crop .dl{font-size:11px;margin-top:1px}
+.crop canvas{display:block;width:100%;height:34px;margin:7px 0 3px}
+.crop .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;font-size:10px;color:var(--dim);margin:4px 0 7px}
+.crop .stats b{display:block;color:var(--text);font-size:11px;font-weight:600}
+.qty{display:flex;align-items:center;gap:6px;margin-bottom:7px}
+.qty input{flex:1;min-width:0;background:#0d131a;border:1px solid var(--line);border-radius:8px;color:var(--text);padding:10px 9px;min-height:42px;font-size:14px;font-family:inherit}
+.chips{display:flex;gap:4px}
+.chip{background:#1b2532;border:1px solid var(--line);color:var(--dim);border-radius:8px;padding:7px 10px;min-height:36px;font-size:10.5px;cursor:pointer;display:inline-flex;align-items:center}
+.chip.on{background:var(--accent);border-color:var(--accent);color:#04121f;font-weight:700}
+.quote{background:#0f1620;border:1px dashed var(--line);border-radius:9px;padding:7px 9px;font-size:11px;color:var(--dim);margin-bottom:7px;line-height:1.6}
+.quote b{color:var(--text)}
+
+/* 列表行 */
+.line{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #1a242f;font-size:12px}
+.line:last-child{border-bottom:0}
+.line .k{color:var(--dim)}
+.line .v{font-weight:600}
+
+/* 日志 */
+/* 流水条：默认一行（只看最近一条），点一下展开成 5 条。
+   之前常驻 3 行 82px，占掉手机 10% 的屏高。 */
+#feed{flex:0 0 auto;border-top:1px solid var(--line);background:#0a0f14;padding:3px 12px;font-size:11px;line-height:1.5;cursor:pointer}
+#feed.open{max-height:112px;overflow-y:auto}
+#feed .lg{color:var(--dim)}
+/* 收起时锁成一行：§18 把 .lg 改成可换行，一条长流水会撑成两三行，
+   "默认只占一行"就没了。用 :not(.open) 提高一级优先级锁回来。
+   文本必须单独包一层 .lgt 才能截断，同时给右端的「全部 ▾」留出位置。 */
+#feed:not(.open){max-height:29px;overflow:hidden}
+#feed .lg{display:flex;align-items:baseline;gap:6px;min-width:0}
+#feed .lgt{flex:1 1 auto;min-width:0}
+#feed:not(.open) .lgt{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#feed .fmore{flex:0 0 auto;margin-left:2px;font-size:10px;color:var(--ink3);white-space:nowrap}
+#feed .lg.good{color:var(--up)} #feed .lg.bad{color:var(--down)}
+#feed .lg.event{color:var(--gold)} #feed .lg.auction{color:var(--purple)}
+#feed .lg.trade{color:#bcd3e8} #feed .lg.intel{color:#7fd3ff} #feed .lg.money{color:var(--gold)}
+#feed .lg.system{color:var(--text)}
+
+/* ---------- 浮层 ---------- */
+.overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(4,7,10,.94);display:flex;align-items:flex-start;justify-content:center;padding:12px;z-index:40;overflow-y:auto;overscroll-behavior:contain}
+.overlay.hide{display:none}
+.modal{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:15px;width:100%;max-width:440px;margin:auto}
+.modal h2{margin:0 0 4px;font-size:17px}
+.modal .lead{color:var(--dim);font-size:12px;margin-bottom:12px;line-height:1.6}
+.corps{display:grid;gap:6px;margin-bottom:10px}
+.corp{border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--panel2);cursor:pointer;text-align:left;color:inherit;width:100%;font-size:12px}
+.pacerow{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-bottom:10px}
+.pacerow .corp{padding:7px;text-align:center}
+.corp.on{border-color:var(--accent);background:#16283c;box-shadow:0 0 0 1px var(--accent)}
+.corp .t{font-weight:700;font-size:13px;margin-bottom:2px}
+.corp .tag{display:inline-block;font-size:9px;padding:1px 5px;border-radius:5px;background:#22303f;color:var(--dim);margin-left:5px;vertical-align:middle}
+.corp .ds{color:var(--dim);font-size:11px;line-height:1.5}
+.seedin{display:flex;gap:6px;margin-bottom:12px}
+.seedin input{flex:1;background:#0d131a;border:1px solid var(--line);border-radius:9px;color:var(--text);padding:9px;font-size:12px;font-family:inherit}
+.talents{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
+.tcard{border:1px solid var(--line);border-radius:11px;padding:9px;background:var(--panel2);cursor:pointer;text-align:left;color:inherit}
+.tcard.common{border-left:3px solid var(--dim)}
+.tcard.rare{border-left:3px solid var(--accent)}
+.tcard.epic{border-left:3px solid var(--gold)}
+.tcard .n{font-weight:700;font-size:12px;margin-bottom:3px}
+.tcard .d{font-size:10px;color:var(--dim);line-height:1.5}
+.tcard .tree{font-size:9px;color:var(--dim2)}
+
+/* 结算 */
+#awards h1{font-size:20px;margin:0 0 3px}
+#awards .sub{color:var(--dim);font-size:11px;margin-bottom:14px}
+.aw{border:1px solid var(--line);border-radius:13px;padding:12px;margin-bottom:9px;background:var(--panel2)}
+.aw.chief{border-color:var(--gold);background:linear-gradient(180deg,#241d0c,#161b22)}
+.aw .who{font-size:11px;color:var(--dim)}
+.aw .ttl{font-size:16px;font-weight:700;margin:2px 0 4px}
+.aw.chief .ttl{color:var(--gold)}
+.aw .why{font-size:11px;color:var(--dim);line-height:1.6}
+.aw .say{font-size:12px;line-height:1.7;margin-top:7px;padding-left:9px;border-left:2px solid var(--accent);color:#cfe3f5}
+.tbl{width:100%;border-collapse:collapse;font-size:11px;margin-top:6px}
+.tbl th,.tbl td{text-align:right;padding:4px 3px;border-bottom:1px solid #1a242f}
+.tbl th{color:var(--dim);font-weight:500}
+.tbl td:first-child,.tbl th:first-child{text-align:left}
+.tbl tr.me td{color:var(--gold);font-weight:700}
+
+/* toast */
+/* toast：最多 3 条 + 一条「还有 N 条」汇总。上限在 ui.js 的 toast() 里强制执行，
+   这里再给容器一个物理高度上限，双保险 —— 曾经一次爆发能叠到 19 条、盖住整屏和页签栏。 */
+#toasts{position:absolute;left:50%;transform:translateX(-50%);bottom:84px;z-index:30;display:flex;flex-direction:column;gap:7px;align-items:center;pointer-events:none;width:92%;max-height:42vh;overflow:hidden}
+.toast{background:rgba(19,26,34,.97);border:1px solid var(--line);border-radius:9px;padding:7px 12px;font-size:11.5px;max-width:100%;text-align:center;box-shadow:0 6px 20px rgba(0,0,0,.5)}
+.toast.more{font-size:10.5px;padding:4px 10px;opacity:.82;font-variant-numeric:tabular-nums}
+.toast.ok{border-color:var(--up);color:var(--up)}
+.toast.err{border-color:var(--down);color:var(--down)}
+.toast.info{border-color:var(--accent)}
+.warn{background:#2a1512;border:1px solid var(--down);border-radius:10px;padding:9px;font-size:11px;color:#ffb3b3;margin-bottom:9px;line-height:1.6}
+.banner{background:linear-gradient(90deg,#2a1f08,#1a2130);border:1px solid var(--gold);border-radius:10px;padding:9px;font-size:11px;margin-bottom:9px;line-height:1.6}
+.empty{text-align:center;color:var(--dim2);font-size:12px;padding:26px 10px;line-height:1.8}
+
+/* ---------- 美术资产 ----------
+   深底方形图 + 圆角容器，不做抠图（docs/10 §5.1）。
+   每个图标都是 <img> + <em>emoji</em> 两层：图片加载失败（比如只拿了单个 html 文件、
+   没有 assets 目录）就自动回退到 emoji —— 单文件仍然能用。 */
+.icwrap{position:relative;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;overflow:hidden;border-radius:22%}
+.icwrap>img{width:100%;height:100%;object-fit:cover;display:block}
+.icwrap>em{display:none;font-style:normal;line-height:1}
+.icwrap.noart>img{display:none}
+.icwrap.noart>em{display:inline}
+/* 题图用固定比例而不是固定高度：原来 height:132px/96px 写死，桌面上卡片拉到 1384px 宽
+   就变成 9:1 的细条，照片被裁得认不出来。 */
+.hero{width:100%;aspect-ratio:1.9;height:auto;max-height:200px;object-fit:cover;object-position:center 38%;border-radius:12px 12px 0 0;display:block}
+.evcard{position:relative;border-radius:var(--r);overflow:hidden;margin-bottom:9px;border:1px solid var(--gold)}
+.evcard>img{width:100%;aspect-ratio:2.2;height:auto;max-height:200px;object-fit:cover;display:block}
+.evcard .evtxt{padding:8px 10px;background:linear-gradient(180deg,rgba(11,15,20,.55),rgba(11,15,20,.96));font-size:11px;line-height:1.6}
+.evcard .evname{color:var(--gold);font-weight:700;font-size:12px;margin-bottom:2px}
+
+/* ================= 响应式与观感增强 =================
+   改动原因：本文件原先 @media 数量为 0，且 #app 写死 max-width:520px、
+   地块等网格写死列数 —— 于是桌面上只是一条 520px 居中窄栏，平板/桌面
+   完全不利用横向空间，整体观感偏「后台系统」而不是游戏。
+   约束：不改 :root 主色板（docs/10 规定色板唯一来源，只复用既有变量 +
+   中性黑白阴影，不引入新主色）；不引外部字体/图标，保持单文件构建。
+   断点：手机 <768 / 平板 768–1023 / 桌面 ≥1024 / 超宽 ≥1440。 */
+
+/* 移动端浏览器工具栏会吃掉 100%，改用动态视口高度 */
+#app{height:100vh;height:100dvh}
+
+/* 观感：给扁平面板加一点层次；交互元素补过渡与按压反馈 */
+.card,.crop,.aw,.plot,.tcard,.corp{box-shadow:0 1px 0 rgba(255,255,255,.04) inset,0 6px 18px rgba(0,0,0,.30)}
+.btn,.chip,.sbtn,.tab,.corp,.tcard{transition:background-color .16s ease,border-color .16s ease,color .16s ease,transform .08s ease,filter .16s ease}
+.btn:hover,.chip:hover,.sbtn:hover{filter:brightness(1.15)}
+.btn:active,.chip:active,.sbtn:active{transform:scale(.97)}
+.btn:focus-visible,.chip:focus-visible,.sbtn:focus-visible,.tab:focus-visible,.corp:focus-visible,.tcard:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* 分区标题左侧一道强调色竖条：最省事的游戏化信号，不引入新颜色 */
+.ct h3::before{content:"";display:inline-block;width:3px;height:13px;border-radius:2px;background:var(--accent);margin-right:7px;vertical-align:-2px}
+/* 滚动条 */
+#view,#tabs{scrollbar-width:thin;scrollbar-color:var(--line) transparent}
+#view::-webkit-scrollbar,#tabs::-webkit-scrollbar{width:8px;height:8px}
+#view::-webkit-scrollbar-thumb,#tabs::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.001ms !important;transition-duration:.001ms !important}}
+
+/* ---- 平板/桌面档：已删除 ----
+   这里原来写 `#app{max-width:720px}` + `#plots` 升 3 列。460px 以上的排版见 §19：
+   不做第二套排版，游戏始终是那条 430px 的列；地块也始终 2 列（平板 3 列 / 桌面 2 列
+   那种「屏幕越大格子越小」的倒挂已经去掉）。 */
+
+/* ---- 桌面档不在这里处理：见本文件末尾 v2 §15。
+       原先这里是一个「左侧竖排导航 + 双栏」的应用外壳（grid-template-areas），
+       用户 2026-10-08 明确反馈「没要求你做一个壳」—— 它把界面变成后台管理系统长相，
+       正是最初「不像游戏、更像系统」的病根。已拆除，改为「纵向流 + 内容多栏」。 ---- */
+

@@ -1,0 +1,117 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>POINTERUP running</title>
+<style>
+  html,body{margin:0;background:#101010;color:#e8e8e8;font:12px/1.6 ui-monospace,Consolas,monospace;overflow:hidden}
+  iframe{position:absolute;left:0;top:0;width:900px;height:880px;border:0}
+  #out{position:absolute;left:910px;top:0;width:520px;height:880px;overflow:auto;white-space:pre-wrap;padding:8px}
+</style>
+<pre id="out">loading…</pre>
+<iframe id="f" src="demo.html?auto=1&corp=grow&pace=1.6&view=farm&cb=pup"></iframe>
+<script>
+/* 「按钮不灵，要点好几下才生效（播种）」的专项复现。
+   机制假设：render() 每 120ms 重写 #view，播种按钮被销毁重建；
+   人手按压 80~150ms 必然跨过一次重建，mousedown 目标被移出文档后
+   浏览器不产生 click 事件 → 这一下被静默吞掉。
+   测试做法：忠实复刻那个时序 ——
+     ① 在按钮上派发 pointerdown（按下）
+     ② 强制 render(true)，让原按钮节点被销毁（等价于那 120ms 内部发生的事）
+     ③ 按“抬起位置”重新命中测试，在指针下真正的元素上派发 pointerup（浏览器就是这么做的）
+   断言：动作必须正好执行 1 次；随后同一次按压的 click 不得重复执行。 */
+const F = document.getElementById('f'), OUT = document.getElementById('out');
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const T = []; const ok = (n, p, x) => T.push((p ? 'PASS  ' : 'FAIL  ') + n + (x ? '   ' + x : ''));
+
+(async () => {
+  await new Promise(r => F.addEventListener('load', r, { once: true }));
+  const win = F.contentWindow, doc = win.document;
+  await sleep(1300);
+
+  const D = win.__GG_DEBUG;
+  if (!D) { OUT.textContent = 'ERR 没有 __GG_DEBUG 钩子'; document.title = 'POINTERUP error'; return; }
+  D.setView('farm');
+  await sleep(250);
+
+  // 给 G.act 打桩，精确统计“动作被执行了几次”
+  const G = D.G;
+  const calls = [];
+  const origAct = G.act.bind(G);
+  G.act = (pid, name, payload) => { calls.push({ name, payload }); return origAct(pid, name, payload); };
+  const plants = () => calls.filter(c => c.name === 'plant').length;
+
+  let btn = doc.querySelector('#view [data-plant]');
+  if (!btn) { OUT.textContent = 'ERR 没找到 [data-plant] 按钮（农田里没有空地？）'; document.title = 'POINTERUP error'; return; }
+  btn.scrollIntoView({ block: 'center' });
+  await sleep(150);
+  /* ⚠ 查询与测量必须放在同一个同步块里：中间只要插一次 await，
+     那 120ms 一次的 render 就会把节点换掉，测到的是已脱离文档的旧节点，
+     getBoundingClientRect() 全返回 0 —— 测试第一版 3 项 FAIL 就是这个原因，不是产品问题。 */
+  btn = doc.querySelector('#view [data-plant]');
+  const rect = btn.getBoundingClientRect();
+  const X = Math.round(rect.x + rect.width / 2), Y = Math.round(rect.y + rect.height / 2);
+  const idx = btn.dataset.plant;
+  ok('找到播种按钮并已滚到可见区', rect.width > 0 && rect.height > 0,
+     'data-plant=' + idx + ' 坐标=' + X + ',' + Y + ' 视口内=' + (Y > 0 && Y < win.innerHeight));
+
+  const mk = (type, cx, cy) => new win.PointerEvent(type, {
+    bubbles: true, cancelable: true, composed: true,
+    clientX: cx, clientY: cy, button: 0, buttons: type === 'pointerdown' ? 1 : 0,
+    pointerId: 1, pointerType: 'mouse', isPrimary: true,
+  });
+
+  // ① 按下
+  const before = plants();
+  btn.dispatchEvent(mk('pointerdown', X, Y));
+  ok('pointerdown 本身不触发动作（动作只在抬起时做）', plants() === before,
+     'plant 调用数=' + plants());
+
+  // ② 按压期间发生的那次重渲染：原按钮节点被销毁替换
+  D.render(true);
+  const btn2 = doc.querySelector('#view [data-plant]');
+  ok('原按钮节点已被销毁替换（复刻了 120ms 重建）', btn2 && btn2 !== btn,
+     btn2 ? ('old===new? ' + (btn2 === btn)) : '按钮消失');
+
+  // ③ 抬起：浏览器按“抬起位置”重新命中测试，所以目标是新节点
+  const top = (doc.elementsFromPoint(X, Y) || [])[0] || btn2;
+  ok('抬起位置命中到的是活着的按钮', !!(top && top.closest && top.closest('[data-plant]')),
+     '命中元素=' + (top ? (top.tagName + (top.className ? '.' + String(top.className).split(' ')[0] : '')) : 'null'));
+  top.dispatchEvent(mk('pointerup', X, Y));
+  await sleep(60);
+  ok('按下→重建→抬起 后动作正好生效 1 次（核心修复）', plants() === before + 1,
+     'plant 调用数 ' + before + ' → ' + plants());
+
+  // ④ 同一次按压浏览器还会补一次 click；不得重复执行
+  const afterUp = plants();
+  const t2 = (doc.elementsFromPoint(X, Y) || [])[0] || doc.querySelector('#view');
+  t2.dispatchEvent(new win.MouseEvent('click', { bubbles: true, cancelable: true, clientX: X, clientY: Y, button: 0 }));
+  await sleep(60);
+  ok('同一次按压的 click 被抑制（动作不重复）', plants() === afterUp,
+     'plant 调用数 ' + afterUp + ' → ' + plants());
+
+  // ⑤ 键盘 / 辅助技术路径：没有 pointerup 的纯 click 仍然可用
+  await sleep(800);
+  const beforeKb = plants();
+  const kbBtn = doc.querySelector('#view [data-plant]') || btn2;
+  kbBtn.dispatchEvent(new win.MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
+  await sleep(60);
+  ok('纯 click（键盘/辅助技术）仍能触发动作', plants() === beforeKb + 1,
+     'plant 调用数 ' + beforeKb + ' → ' + plants());
+
+  // ⑥ 反例：在非按钮区域抬起，不应产生任何动作
+  await sleep(800);
+  const beforeBg = plants();
+  const bg = doc.querySelector('#view');
+  const bgTop = (doc.elementsFromPoint(4, doc.documentElement.clientHeight - 4) || [])[0] || bg;
+  bgTop.dispatchEvent(mk('pointerup', 4, doc.documentElement.clientHeight - 4));
+  await sleep(60);
+  ok('在非按钮区域抬起不触发动作（无假阳性）', plants() === beforeBg,
+     'plant 调用数 ' + beforeBg + ' → ' + plants());
+
+  // 附：把动作序列打出来
+  const seq = calls.map((c, i) => '  ' + (i + 1) + '. ' + c.name + ' ' + JSON.stringify(c.payload)).join('\n');
+  const fail = T.filter(x => x.startsWith('FAIL')).length;
+  OUT.textContent = '播种竞态（pointerup）检查：' + T.length + ' 项，失败 ' + fail + ' 项\n\n' + T.join('\n') +
+    '\n\n实际动作序列：\n' + (seq || '  （无）');
+  document.title = 'POINTERUP done fail=' + fail;
+})().catch(e => { OUT.textContent = 'ERR ' + e.message + '\n' + e.stack; document.title = 'POINTERUP error'; });
+</script>

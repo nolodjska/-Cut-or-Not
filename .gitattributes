@@ -1,0 +1,24 @@
+# 全项目统一 LF（仓库 + 工作区都用 LF）。
+#
+# 为什么必须写死这一行：本项目有「逐字节原样」类守卫 ——
+#   · tools/parts-ranges.cjs        （验证 part 与原始行范围逐字节一致）
+#   · tools/parts-verify.cjs        （迁移守卫·引擎 / UI）
+# 一旦 git 把工作区文件转成 CRLF，这些字节比对会全部失真；
+# 而且它是「松耦合」的：不会当场报错，而是变成一堆莫名其妙的失败。
+# 本机 core.autocrlf = true 时会主动做这种转换，所以这里必须显式压住。
+* text=auto eol=lf
+
+# 二进制资源：禁止任何换行/编码转换
+*.png  binary
+*.webp binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.mp3  binary
+*.pdf  binary
+
+# Windows 脚本保持 CRLF，保证双击可直接运行
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+*.ps1  text eol=crlf

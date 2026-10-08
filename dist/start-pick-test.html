@@ -1,0 +1,84 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>STARTPICK running</title>
+<style>
+  html,body{margin:0;background:#101010;color:#e8e8e8;font:12px/1.6 ui-monospace,Consolas,monospace}
+  iframe{position:absolute;left:-20000px;top:0;width:900px;height:900px;border:0}
+  pre{white-space:pre-wrap;padding:10px}
+</style>
+<pre id="out">loading…</pre>
+<!-- 不带 auto：要的就是开局浮层 -->
+<iframe id="f" src="demo.html?cb=startpick"></iframe>
+<script>
+/* 开局公司选择的「无闪动 / 不重载」客观验证。
+   判定标准（任一不过即 FAIL）：
+     A 浮层节点身份不变 —— 点完仍是同一个 .modal 元素（没重建 DOM，CSS 动画就不可能重播）
+     B 手输的世界种子不丢 —— 点公司不得把它冲回默认值
+     C iframe 没有重载 —— window 身份不变，且我们预先埋在 window 上的标记还在
+     D 选中态正确迁移 —— 点中的公司拿到 .on，其余没有
+     E 节奏说明就地更新 —— #paceDesc 文案跟着变，且 #ovStart 里始终只有一个 .modal */
+const F = document.getElementById('f'), OUT = document.getElementById('out');
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const T = []; const ok = (n, p, extra) => T.push((p ? 'PASS  ' : 'FAIL  ') + n + (extra ? '   ' + extra : ''));
+
+(async () => {
+  await new Promise(r => F.addEventListener('load', r, { once: true }));
+  const win = F.contentWindow, doc = win.document;
+  await sleep(500);
+
+  const modal0 = doc.querySelector('#ovStart .modal');
+  if (!modal0) { OUT.textContent = 'ERR: 没找到开局浮层 .modal'; document.title = 'STARTPICK error'; return; }
+
+  // 埋两个"身份标记"：页面重载就没了
+  win.__STARTPICK__ = 'alive';
+  modal0.__STARTPICK_NODE__ = 'same-node';
+
+  // 输入自定义种子
+  const seedin = doc.querySelector('#seedin');
+  const CUSTOM = 'MY-CUSTOM-SEED-42';
+  seedin.value = CUSTOM;
+
+  const corps = [...doc.querySelectorAll('#ovStart [data-corp]')];
+  const paces = [...doc.querySelectorAll('#ovStart [data-pace]')];
+  ok('找到公司按钮', corps.length >= 6, 'n=' + corps.length);
+  ok('找到节奏按钮', paces.length === 3, 'n=' + paces.length);
+
+  // 点第 3 家公司
+  const target = corps[2];
+  const targetId = target.dataset.corp;
+  target.click();
+  await sleep(120);
+  // 点"极速局"
+  paces[0].click();
+  await sleep(120);
+
+  // C: 页面没重载
+  ok('iframe 未重载（window 身份不变）', F.contentWindow === win);
+  ok('iframe 未重载（预埋标记还在）', win.__STARTPICK__ === 'alive');
+
+  // A: 节点未重建
+  const modal1 = doc.querySelector('#ovStart .modal');
+  ok('浮层节点未重建（同一元素）', modal1 === modal0, modal1 === modal0 ? '' : '被替换成了新节点');
+  ok('浮层节点标记仍在', modal1 && modal1.__STARTPICK_NODE__ === 'same-node');
+
+  // B: 种子没丢
+  const seedNow = doc.querySelector('#seedin').value;
+  ok('手输种子未丢失', seedNow === CUSTOM, '实际=' + JSON.stringify(seedNow));
+
+  // D: 选中态
+  const onCorps = [...doc.querySelectorAll('#ovStart [data-corp].on')].map(b => b.dataset.corp);
+  ok('选中公司唯一且正确', onCorps.length === 1 && onCorps[0] === targetId,
+     'on=[' + onCorps.join(',') + '] 期望=' + targetId);
+  const onPaces = [...doc.querySelectorAll('#ovStart [data-pace].on')].map(b => b.dataset.pace);
+  ok('选中节奏唯一且正确', onPaces.length === 1 && onPaces[0] === '1.6', 'on=[' + onPaces.join(',') + ']');
+
+  // E: 节奏说明就地更新 + 只有一个 modal
+  const desc = (doc.querySelector('#paceDesc') || {}).textContent || '';
+  ok('节奏说明已更新', desc.indexOf('2 分钟') >= 0, '实际=' + JSON.stringify(desc));
+  ok('#ovStart 内只有一个 .modal', doc.querySelectorAll('#ovStart .modal').length === 1);
+
+  const fail = T.filter(t => t.startsWith('FAIL')).length;
+  OUT.textContent = '开局选择验证：' + T.length + ' 项，失败 ' + fail + ' 项\n\n' + T.join('\n');
+  document.title = 'STARTPICK done fail=' + fail;
+})().catch(e => { OUT.textContent = 'ERR ' + e.message; document.title = 'STARTPICK error'; });
+</script>
