@@ -283,6 +283,53 @@ Game.prototype.stakePrice = function (p, give) {
   return Math.max(0, Math.floor(this.valuation(p) * g / (1 - g)));
 };
 
+/* ---- 4.14 股份转让：优先购买权（ROFR）· 4.11 B 持股门槛 ------------------
+   ⚠ 先纠一个**我自己写错的假设**：我曾把“并购”记成架构阻断，说要先引入“公司实体 id”。
+     错了。标的从来不是“哪家公司”，而是“**哪个持股人**”（一人一公司）。
+     所以“收购老陈的公司”= 从老陈手里买到 >50%，而这靠 stakes[] 就能做 —— 不需要实体 id。
+   ⚠ 现实里最容易被漏、张力最大的一条（docs/19 §4.14 B）：
+     向**股东以外的人**转让股权，须先问其他股东要不要同价先买。
+     没有这条，“谁出价高谁拿走”就成了唯一路径，谈判张力全丢。 */
+Game.prototype.rofrHolder = function (owner, buyerPid, price) {
+  const s = this.s;
+  if (!owner) return null;
+  const cap = this.capTable(owner, owner.corp);
+  /* 买方本来就是股东 ⇒ 不是“外人”，不问。 */
+  if (cap.rows.some(r => r.pid === buyerPid)) return null;
+  const cand = cap.rows.filter(r => r.pid !== owner.id && r.pid !== buyerPid);
+  if (!cand.length) return null;
+  /* 按现实惯例：先问持股最多的那位（他最有动机守门）。
+     “不同意的股东应当购买”——但要买得起；买不起就放行（本作简化，写在注释里） */
+  const top = cand[0];
+  const hp = s.players.find(x => x.id === top.pid);
+  if (!hp || !hp.alive) return null;
+  if (hp.cash < price) return null;
+  return top;
+};
+
+/* §4.11 B 持股门槛表：把“多少股 = 什么权”集中成一处，UI 与守卫共读。
+   ⚠ 现实里“收购不是点一下就成，是一串门槛”——每个节点都要能对玩家说清楚。 */
+Game.prototype.rights = function (p, targetPid) {
+  const tgt = targetPid == null ? p : this.s.players.find(x => x.id === targetPid);
+  if (!tgt) return { stake: 0, list: [], next: null };
+  const cap = this.capTable(tgt, tgt.corp);
+  const row = cap.rows.find(r => r.pid === p.id);
+  const stake = row ? row.stake : 0;
+  const T = [
+    [0.667, '特别决议（改章程 / 增资 / 卖公司）'],
+    [0.5, '控股（普通决议你说了算）'],
+    [0.3, '要约收购义务（要买得公开出价）'],
+    [0.2, '可提名董事（能看这家公司的细节）'],
+    [0.1, '可发起决议'],
+    [0.05, '举牌（必须公告，藏不住了）'],
+    [0.03, '可提交议题'],
+  ];
+  const list = T.filter(x => stake >= x[0]).map(x => x[1]);
+  const above = T.filter(x => stake < x[0]);      // T 是降序 ⇒ 最后一个就是“最近的下一道”
+  const next = above.length ? { at: above[above.length - 1][0], label: above[above.length - 1][1] } : null;
+  return { stake, list, next };
+};
+
 /* 追保与破产（docs/13 §4.3）——「负债 ≠ 破产」的落点。
    判据只有两条，**欠了多少钱本身不算**：
      ① 资不抵债：净资产 / 总负债 < maintRatio（维持线 0.30）

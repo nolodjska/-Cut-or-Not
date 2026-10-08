@@ -504,16 +504,24 @@ Game.prototype._a_contact = function (p, d) {
       '答应的话，钱当场从你账上划给他；到期他不还，这笔就烂在你手里。';
     mailKind = 'coop';
   } else if (kind === 'jv') {
-    const own = (p.holdings || []).find(h => h.corpId === p.corp);
+    /* 标的 = **这位持股人**（一人一公司），不是“哪家公司” —— 见 rofrHolder 的注释。 */
+    const target = to;
+    const own = (target.holdings || []).find(h => h.corpId === target.corp);
     const cur = own && own.stake != null ? own.stake : 1;
-    o.give = clamp(d.give == null ? 0.2 : d.give, 0, Math.max(0, cur - 0.5));
-    if (!(o.give > 0)) return { ok: false, msg: '你手上的股份已经让不出去了' };
-    o.price = this.stakePrice(p, o.give);
-    if (!(o.price > 0)) return { ok: false, msg: '公司现在估值太低，开不了价' };
-    subject = p.name + ' 邀你入股他的公司（' + Math.round(o.give * 100) + '%）';
-    body = p.name + ' 请你出 ' + money(o.price) + ' G 入股他的公司，占 ' +
-      Math.round(o.give * 100) + '% 的股份。\n' +
-      '这笔钱进公司账。以后公司分钱有你一份，股东会上你也有一票。';
+    o.give = clamp(d.give == null ? 0.2 : d.give, 0, Math.max(0, cur - 0.05));
+    if (!(o.give > 0)) return { ok: false, msg: '他手上的股份已经很分散，先谈不动' };
+    const after = cur - o.give;
+    /* 控制权溢价（§4.14 A）：现实惯例 20~40%，本作默认 30%。
+       这一笔之后他不再控股 ⇒ 你买的是“说了算”，所以贵三成。 */
+    const cross = cur > 0.5 && after <= 0.5;
+    o.controlMult = cross ? 1.3 : 1;
+    o.price = Math.round(this.stakePrice(target, o.give) * o.controlMult);
+    if (!(o.price > 0)) return { ok: false, msg: '这家公司现在估值太低，开不了价' };
+    subject = p.name + ' 要买你公司 ' + Math.round(o.give * 100) + '% 的股份';
+    body = p.name + ' 出价 ' + money(o.price) + ' G，要买你手上 ' +
+      Math.round(o.give * 100) + '% 的股份' +
+      (cross ? '（买完这家公司他说了算）' : '') + '。\n' +
+      '钱进你公司的账。这笔要**先问过其他股东** —— 他们可以按同样的条件先拿。';
     mailKind = 'deal';
   } else if (kind === 'invite') {
     const dec = (s.decisions || []).find(x => x.status === 'open' && x.ownerPid === p.id);
@@ -557,22 +565,53 @@ Game.prototype._settleNew = function (p, o, accept) {
   }
 
   if (o.kind === 'jv') {
-    /* p = 出钱入股的人，other = 公司老板 */
-    const ownH = (other.holdings || []).find(h => h.corpId === other.corp);
+    /* ⚠ 方向必须按**提议本身**定，不能按“谁答复”定：
+         发起人 = 买方（from）、被问的人 = 卖方（to）。
+         我第一版把付款方写成 p（答复者），于是「你买 NPC 的股份」会变成 NPC 付钱给你 ——
+         买卖反了，而且表面上还“成交”了，静默错账。
+       ⚠ 钱进**卖方公司账**（增资口径）：卖方老板的并表身价因此不变，
+         他把股份换成等额现金，两边都不吃亏（buyer test B6 锁这条）。 */
+    const buyer = s.players.find(x => x.id === o.from);
+    const seller = s.players.find(x => x.id === o.to);
+    if (!buyer || !buyer.alive || !seller || !seller.alive) {
+      o.status = 'lapsed'; return { ok: false, msg: '有一方已经不在了' };
+    }
+    const ownH = (seller.holdings || []).find(h => h.corpId === seller.corp);
     if (!ownH) { o.status = 'lapsed'; return { ok: false, msg: '这家公司已经不在了' }; }
     const cur = ownH.stake == null ? 1 : ownH.stake;
     const give = Math.min(o.give, cur);
-    if (!(give > 0)) { o.status = 'lapsed'; return { ok: false, msg: '对方手里没有可让的股份' }; }
-    const price = Math.min(o.price, Math.floor(p.cash));
-    if (!(price > 0)) return { ok: false, msg: '你手上的现金不够这笔入股钱' };
-    p.cash -= price; other.cash += price;        /* 增资：钱进**公司账**，不进老板口袋 */
-    ownH.stake = Math.round((cur - give) * 10000) / 10000;
-    if (!Array.isArray(p.stakes)) p.stakes = [];
-    p.stakes.push({ targetPid: other.id, stake: give, price, t: Math.round(s.t) });
-    o.status = 'accepted';
-    this._log('deal', p.name + ' 入股了 ' + other.name + ' 的公司，占 ' +
-      Math.round(give * 100) + '%（出 ' + money(price) + ' G）', p.id);
-    return { ok: true, msg: '成交：你占了他公司 ' + Math.round(give * 100) + '% 的股份，以后分钱有你一份。' };
+    if (!(give > 0)) { o.status = 'lapsed'; return { ok: false, msg: '卖方手里没有可让的股份' }; }
+    /* 钱不够就买不成（不做“付一部分、拿全部”的错账） */
+    if (buyer.cash < o.price) { o.status = 'lapsed'; return { ok: false, msg: '买方现在拿不出这笔钱' }; }
+    const price = o.price;
+    const round4 = x => Math.round(x * 10000) / 10000;
+    const deliver = (holder) => {
+      holder.cash -= price;                              /* 买方付钱 */
+      seller.cash += price;                              /* 钱进卖方**公司账**，不进老板口袋 */
+      ownH.stake = round4(cur - give);
+      if (!Array.isArray(holder.stakes)) holder.stakes = [];
+      holder.stakes.push({ targetPid: seller.id, stake: give, price, t: Math.round(s.t) });
+      o.status = 'accepted';
+    };
+    const rofr = this.rofrHolder(seller, buyer.id, price);
+    if (rofr && rofr.pid !== buyer.id) {
+      const hp = s.players.find(x => x.id === rofr.pid);
+      deliver(hp);
+      o.rofr = hp.id;
+      buyer.memory = buyer.memory || {};
+      if (!buyer.memory.grudge) buyer.memory.grudge = {};
+      buyer.memory.grudge[hp.id] = (buyer.memory.grudge[hp.id] || 0) + 1;
+      this._log('deal', seller.name + ' 的股份被 ' + hp.name + ' 按优先权先拿走了 —— ' +
+        buyer.name + ' 白跑一趟', buyer.id);
+      return { ok: true, msg: '按规矩，其他股东可以同价先拿 —— ' + hp.name +
+        ' 把它拿走了。这价你买不到了。' };
+    }
+    deliver(buyer);
+    const ctrl = ownH.stake <= 0.5;
+    this._log('deal', buyer.name + ' 买下了 ' + seller.name + ' 公司 ' + Math.round(give * 100) +
+      '% 的股份（出 ' + money(price) + ' G）' + (ctrl ? ' —— 这家公司他说了算' : ''), buyer.id);
+    return { ok: true, msg: '成交：你拿下 ' + Math.round(give * 100) + '% 的股份 —— ' +
+      (ctrl ? '这家公司现在你说了算。' : '以后分钱有你一份。') };
   }
 
   if (o.kind === 'invite') {
@@ -614,11 +653,15 @@ Game.prototype._npcAnswer = function (o) {
     return;
   }
   if (o.kind === 'jv') {
-    const fair = this.stakePrice(me, o.give);
-    const ok = to.cash >= o.price && o.price <= fair * 1.02;
+    /* ⚠ 卖的是**他的**公司 ⇒ 公允价必须按**卖方**算；
+       能不能成交要看**买方**付不付得起。
+       我第一版两处都写反了（拿买方的估值、又去查卖方的现金）——
+       结果是“他钱不够所以不卖你”，而卖的人根本不付钱。 */
+    const fair = this.stakePrice(to, o.give);
+    const ok = me.cash >= o.price && o.price >= fair * 0.98;
     if (!ok) {
       o.status = 'declined';
-      this._log('mail', '✉ ' + to.name + ' 回话：这个价他不入', to.id);
+      this._log('mail', '✉ ' + to.name + ' 回话：这个价他不卖', to.id);
       return;
     }
     this._settleNew(to, o, true);

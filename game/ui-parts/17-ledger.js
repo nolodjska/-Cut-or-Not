@@ -136,15 +136,25 @@ function boardSection() {
     const talk = me ? '' :
       '<span class="chips">' +
         '<button class="btn" data-act="contact" data-kind="borrow" data-to="' + r.pid + '">借钱</button>' +
-        '<button class="btn" data-act="contact" data-kind="jv" data-to="' + r.pid + '">邀他入股</button>' +
+        '<button class="btn" data-act="contact" data-kind="jv" data-to="' + r.pid + '">买他股份</button>' +
         '<button class="btn" data-act="contact" data-kind="invite" data-to="' + r.pid + '">请他议事</button>' +
       '</span>';
+    /* 你已经占了人家多少、离下一道门槛还差多远（docs/19 §4.11 B 要求“每个节点都要有说明文本”）。
+       门槛表读引擎的 G.rights()，UI 不自己写一份 —— 两处各写一遍必然会对不上。 */
+    let mine = '';
+    if (!me && G.rights) {
+      const rr = G.rights(HUMAN, r.pid);
+      if (rr.stake > 0) {
+        mine = ' · 你占 ' + Math.round(rr.stake * 100) + '%' +
+          (rr.next ? '（再过 ' + ((rr.next.at - rr.stake) * 100).toFixed(1) + '% 可' + esc(rr.next.label) + '）' : '');
+      }
+    }
     return '<div class="firm">' +
       '<div class="fmain">' +
         '<div class="ft">' + r.rank + '. ' + esc(r.name) +
           (me ? '<span class="tag">你</span>' : '') + '</div>' +
         '<div class="fl">' + esc(r.corpName) + ' · 身价 ' + fmt(r.nav) + ' G' +
-          (r.debt > 0 ? ' · 欠着 ' + fmt(r.debt) + ' G' : '') + '</div>' +
+          (r.debt > 0 ? ' · 欠着 ' + fmt(r.debt) + ' G' : '') + mine + '</div>' +
       '</div>' +
       (talk ? '<div class="fact">' + talk + '</div>' : '') +
     '</div>';
