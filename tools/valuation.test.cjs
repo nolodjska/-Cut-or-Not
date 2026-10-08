@@ -53,10 +53,12 @@ ok('粮田公司乘数 1.0；制造公司乘数 1.40', () => {
 console.log('\nV2 上市：公司现金按净额增加，自己持股下降');
 ok('募资净额 = 估值 × 让出比例 − 发行费', () => {
   const g = mk('GG-VAL-V2', 'grow'), h = H(g);
-  const c0 = h.cash, val = g.valuation(h);
+  const c0 = h.cash;
+  /* ⚠ 公允价必须在**发行之前**算：发行会把钱打进公司账 ⇒ nav 变大 ⇒ stakePrice 跟着变大。
+     我第一版把它写在 act() **之后**，于是“期望值”用的是发行后的估值，当然对不上。 */
+  const raise = g.stakePrice(h, 0.25);
   const r = g.act(h.id, 'ipo', { give: 0.25 });
   assert(r.ok, '应能发行：' + r.msg);
-  const raise = Math.floor(val * 0.25);
   const fee = Math.floor(raise * GG.BAL.ipoFeeRate);
   near(h.cash - c0, raise - fee, 1, '到账应等于募资额减发行费');
   near(h.holdings[0].stake, 0.75, 1e-6, '持股应降到 75%');

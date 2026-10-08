@@ -90,8 +90,11 @@ Game.prototype._a_ipo = function (p, d) {
     return { ok: false, msg: '最多只能让出 ' + Math.round(maxGive * 100) +
       '% —— 再让下去，这家公司你就说不上话了' };
   }
-  const val = this.valuation(p);
-  const raise = Math.floor(val * give);
+  /* ⚠ 发行价用**公允价** stakePrice，不是 val×give：
+     后者等于按**出让前**的估值卖新产生的股份，出让方**恒亏**一截。
+     （valuation.test 的 V3 当时只卡了“涨了才算印钞”，没能拦住“恒亏”——
+       属于守卫盖歪了；S5b 的“零和”断言把它补上了。） */
+  const raise = this.stakePrice(p, give);
   if (raise <= 0) return { ok: false, msg: '公司现在估值太低，发出去也没人接' };
   const fee = Math.floor(raise * BAL.ipoFeeRate);
   const net = raise - fee;
