@@ -166,6 +166,21 @@ Game.prototype._trade = function (p, cid, qty, side, priceOverride, isLimit, byp
 Game.prototype.quote = function (p, cid, qty, side) {
   const c = this.good(cid);
   qty = Math.max(0, Math.floor(qty || 0));
+  /* 投入品（牌价、无冲击）：照实回一个固定价的报价，
+     避免 UI 或别处误用通用报价时算出 NaN（本项目 NAV 被 NaN 污染过一次）。 */
+  if (this.isInput(cid)) {
+    const corp = CORPS.find(x => x.id === p.corp);
+    const unit = c.base * (c.kind === 'seed' ? (corp.seedDiscount || 1) : 1);
+    const fm = (p.mods.feeMult || 1) * (corp.feeMod || 1);
+    const fr = BAL.marketFee * fm;
+    const fee = unit * qty * fr;
+    const room = this.storageMax(p) - this.storageUsed(p);
+    const maxQty = side === 'buy'
+      ? Math.max(0, Math.floor(Math.min(p.cash / Math.max(0.01, unit * (1 + fr)), room)))
+      : 0;
+    return { qty, avgPrice: unit, gross: unit * qty, fee, total: unit * qty + fee,
+             impactPct: 0, priceAfter: unit, maxQty, feeRate: fr, fixed: true };
+  }
   const feeMult = (c.policyMult || 1) * p.mods.feeMult *
     (CORPS.find(x => x.id === p.corp).feeMod || 1) * (p.taxfreeUntil > this.s.t ? 0 : 1);
   const imp = this._impact(p, cid, qty, side);
@@ -192,8 +207,46 @@ Game.prototype.quote = function (p, cid, qty, side) {
   };
 };
 
-Game.prototype.buy = function (p, cid, qty) { return this._trade(p, cid, qty, 'buy'); };
-Game.prototype.sell = function (p, cid, qty) { return this._trade(p, cid, qty, 'sell'); };
+Game.prototype.buy = function (p, cid, qty) {
+  if (this.isInput(cid)) return this._buyInput(p, cid, qty);
+  return this._trade(p, cid, qty, 'buy');
+};
+/* 投入品**只能买、不能卖**（docs/19 §4.15）：买来是为了用，倒手炒农资不是本作玩法。 */
+Game.prototype.sell = function (p, cid, qty) {
+  if (this.isInput(cid)) return { ok: false, msg: '这一档东西买来就是为了用，不能倒手卖。' };
+  return this._trade(p, cid, qty, 'sell');
+};
+
+/* ---- 投入品：固定牌价的买入通道（docs/19 §4.15）-------------------------
+   为什么不复用 _trade：_trade 深依赖 mmInv / depth / anchorImpactShare 算价格冲击
+   与可买量，而投入品**没有这些字段也不该有**（牌价不该被买上去）。
+   与其在通用路径里到处加 if（每加一处都是一个 NaN 风险点），不如给它一条窄通道：
+     ① 校验现金与仓位 ② 按牌价扣款 ③ 入库并更新均价。
+   代价：投入品不进 m.cropTraded / 收货商 / 垄断统计 —— 本来也不该进。 */
+Game.prototype._buyInput = function (p, id, qty) {
+  const g = this.s.inputs && this.s.inputs[id];
+  if (!g) return { ok: false, msg: '没有这种东西' };
+  qty = Math.max(0, Math.floor(qty || 0));
+  if (qty <= 0) return { ok: false, msg: '数量要大于 0' };
+  /* 种子按公司折扣计价（docs/19 §4.15-D）：种植公司的 8 折从“播种时打折”
+     挪到“买入时打折”——同一笔钱，但账要记在**买**这一步，不然播种的账是虚的。 */
+  const corp = CORPS.find(x => x.id === p.corp);
+  const unit = g.base * (g.kind === 'seed' ? (corp.seedDiscount || 1) : 1);
+  const feeMult = (p.mods.feeMult || 1) * (corp.feeMod || 1);
+  const fee = unit * qty * BAL.marketFee * feeMult;
+  const total = unit * qty + fee;
+  const room = this.storageMax(p) - this.storageUsed(p);
+  if (qty > room) return { ok: false, msg: '仓里放不下了（还能放 ' + room + ' 单位）' };
+  if (p.cash < total) return { ok: false, msg: '现金不够（要 ' + Math.round(total) + ' G）' };
+  p.cash -= total;
+  const prevQty = p.storage[id] || 0;
+  const prevAmt = prevQty * ((p.avgCost[id] && p.avgCost[id].c) || unit);
+  p.storage[id] = prevQty + qty;
+  p.avgCost[id] = { q: prevQty + qty, c: (prevAmt + unit * qty) / (prevQty + qty) };
+  p.m.feePaid += fee;
+  p.m.volume += unit * qty;
+  return { ok: true, msg: '买了 ' + qty + ' ' + g.name + '，花了 ' + money(total) + ' G', qty, gross: unit * qty, fee };
+};
 
 /* ---- 3.4 库存 / 估值 ---------------------------------------------------*/
 /* 统一的"货"访问器：作物（crops）与加工品（products）共享交易/库存/估值代码。

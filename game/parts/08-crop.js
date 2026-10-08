@@ -16,17 +16,50 @@ Game.prototype._a_plant = function (p, d) {
   if (!CROP_IDS.includes(cid)) return { ok: false, msg: '没有这种作物' };
   const c = this.s.crops[cid];
   const corp = CORPS.find(x => x.id === p.corp);
+  /* 种子来源两支（docs/19 §4.15）——
+     ① seedMustBuy 开（新局默认）：种子得先在市场买下，播种只扣**库存**，
+        不再扣种子钱（钱在“买种子”那一步就付过了，再扣一次就是双重收费）。
+     ② 关（旧存档的 rules 没这个键）：保持原样，播种时按种价扣现金（含公司折扣）。 */
+  const mustBuy = !!this.s.rules.seedMustBuy;
+  const sid = 'seed_' + cid;
   const cost = Math.round(c.seed * corp.seedDiscount * (this.s.rules.doubleLandRent ? 1.25 : 1));
   let idx = d.index;
   if (idx == null) idx = p.plots.findIndex(pl => !pl.crop);
   if (idx < 0 || idx >= p.plots.length) return { ok: false, msg: '没有空地了，先扩一块地' };
   const pl = p.plots[idx];
   if (pl.crop) return { ok: false, msg: '这块地还种着东西' };
-  if (p.cash < cost) return { ok: false, msg: '现金不够买种子（' + cost + ' G）' };
-  p.cash -= cost;
+  let bought = 0;
+  if (mustBuy) {
+    if ((p.storage[sid] || 0) < 1) {
+      /* 手头没种子 → **顺手在市场上买一包**（牌价 + 手续费，种子按公司折扣）。
+         为什么不做成“报错、让玩家自己先去买”：
+         ① 这条主线原本是“点农田 → 种下萝卜”，只有 16 秒（见 04-ui-state.js 的注）；
+            改成必须先去“总账 → 市场 → 种子档 → 买 → 回农田”，第一分钟当场被拆散，
+            而 docs/06 §6 的新手引导脚本里**只要求“种下萝卜”**。
+         ② docs/08 §2.4：前 5 分钟决定成败（漏斗杀手）。
+         ⇒ 自动补一包，既保住那一分钟，也让种子确实**来自市场**、按市场价出钱。
+         ⚠ 代价（已记入 docs/19 §4.18.2）：想“提前囤种省手续费”的人没有额外好处，
+           “去市场买种子”这件事对玩家是**可见但不强制**的。 */
+      const rb = this._buyInput(p, sid, 1);
+      if (!rb.ok) return { ok: false, msg: '手头没这号种子了，先去「种子·农资」那档买一份。' };
+      bought = 1;
+    }
+    /* 地租附加（doubleLandRent 那 25%）**仍然在播种时付**：它是地租，不是种子钱。
+       把它留在这一侧，是为了让“地租规则”与“种子要不要买”两个开关互不干扰。 */
+    const rent = Math.round(c.seed * corp.seedDiscount * (this.s.rules.doubleLandRent ? 0.25 : 0));
+    if (p.cash < rent) return { ok: false, msg: '现金不够付这一季的地租（' + rent + ' G）' };
+    p.storage[sid] -= 1;
+    if (p.storage[sid] <= 0) delete p.storage[sid];
+    p.cash -= rent;
+  } else {
+    if (p.cash < cost) return { ok: false, msg: '现金不够买种子（' + cost + ' G）' };
+    p.cash -= cost;
+  }
   const growMin = c.growH * 60 * p.mods.growMult;
   pl.crop = cid; pl.plantedT = this.s.t; pl.matureT = this.s.t + growMin; pl.ready = false;
-  return { ok: true, msg: '种下了 ' + c.icon + c.name + '，' + c.growH + ' 游戏小时后可以收割', idx };
+  /* 如实告知种子从哪来 —— 不然“钱怎么少了”会变成猜谜。 */
+  const seedNote = bought ? '（顺手在市场上买了一包种子）' : '';
+  return { ok: true, msg: '种下了 ' + c.icon + c.name + seedNote + '，' + c.growH + ' 游戏小时后可以收割', idx };
 };
 
 Game.prototype._a_plantAll = function (p, d) {

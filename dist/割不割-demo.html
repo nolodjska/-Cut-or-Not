@@ -1333,6 +1333,25 @@ const PRODUCT_MARGIN = 0.45;   // 加工增值率（相对原料估值价）
 const ALL_GOODS = CROP_IDS.concat(PRODUCT_IDS);   // 交易循环统一遍历"所有可交易的东西"
 
 /* 公司类型：六种全部开放（原案 §4.2 的六家公司） */
+/* 投入品（docs/19 §4.15 / §4.18.2）：**买来是为了生产，不是转卖**。
+   与作物/加工品的两条硬区别：
+     ① 只能买、不能卖（`seedMustBuy` 开启后，播种从这里扣，不再直接扣现金）
+     ② 有“牌价”、不做现货浮动（`hasSpot:false`）—— 投入品不该被炒
+   ⚠ 它们**不进 ALL_GOODS**：那条链是“价格会浮动的货”，投入品不浮动。
+     市场面板用 MARKET_GOODS 取全集，避免两处各写一份清单（本项目手写清单漏过一次）。 */
+const INPUTS = [
+  { id:'seed_radish',  name:'萝卜种', icon:'🥕', kind:'seed', crop:'radish',  base:44,  pack:1, germ:0.95, tier:'入门' },
+  { id:'seed_chili',   name:'辣椒种', icon:'🌶️', kind:'seed', crop:'chili',   base:120, pack:1, germ:0.92, tier:'主力' },
+  { id:'seed_ginseng', name:'人参种', icon:'🌿', kind:'seed', crop:'ginseng', base:380, pack:1, germ:0.80, tier:'高端' },
+  { id:'fert',      name:'化肥', icon:'🧪', kind:'agchem', base:60, note:'撒下去，这一季多收一点。' },
+  { id:'pesticide', name:'农药', icon:'🧴', kind:'agchem', base:90, note:'虫子来得凶的那几天，全靠它。' },
+  { id:'mulch',     name:'农膜', icon:'🎏', kind:'agchem', base:40, note:'早春盖一层，苗出得齐。' },
+];
+const INPUT_IDS = INPUTS.map(i => i.id);
+/* 上市场的东西 = 全集（作物 + 加工品 + 投入品）。市场面板只读这一条，不许手写清单。
+   ⚠ 前三类里只有作物/加工品会浮动；投入品是牌价。分档在 UI 侧按 `market` 字段做。 */
+const MARKET_GOODS = ALL_GOODS.concat(INPUT_IDS);
+
 const CORPS = [
   { id:'grow',  name:'种植公司', tag:'稳健经营', desc:'种地是你的命。初始多 2 块地、种子成本 8 折、收成多 10%。', route:'A', stars:{ stab:4, profit:2, ease:2 },
     start: { plots:2, cashMod:-400, storageMod:0 }, seedDiscount:0.8, yieldMult:1.10, feeMod:1.0, intelMod:1.0 },
@@ -1494,6 +1513,10 @@ Game.prototype._init = function (opts) {
     intelPublic: ruleRng.chance(0.20),
     auctionBig: ruleRng.chance(0.25),
     doubleStoragePrice: ruleRng.chance(0.20),
+    /* 种子必须先在市场买（docs/19 §4.15）。**新局默认开**；
+       旧存档的 rules 里没有这个键 ⇒ 读出来是 undefined ⇒ falsy
+       ⇒ 自动走“播种直接扣现金”的老路径（兼容，不改旧档行为）。 */
+    seedMustBuy: true,
   };
 
   const crops = {};
@@ -1510,6 +1533,7 @@ Game.prototype._init = function (opts) {
          混为一谈会让一次正常收成就把价格砸穿（已修）。 */
       depth: Math.max(60, c.absorbDay * BAL.depthMult),
       vol: c.vol, rotH: c.rotH, mono: c.mono, tier: c.tier, note: c.note,
+      market: c.market || 'primary', hasSpot: true,
       mmInv: c.float0,                   // 做市商/对手盘库存
       eventMult: 1, policyMult: 1, rumorUntil: 0, rumorMult: 1,
       peak: round2(c.base * drift), trough: round2(c.base * drift),
@@ -1526,6 +1550,7 @@ Game.prototype._init = function (opts) {
     products[pd.id] = {
       id: pd.id, name: pd.name, icon: pd.icon, from: pd.from, need: pd.need, out: pd.out,
       hours: pd.hours, absorbDay: pd.absorbDay, note: pd.note,
+      market: pd.market || 'craft', hasSpot: true,
       base: pd.base, price: p0, anchor: pd.base, twap: p0, vol: 0.09,
       /* 产品市场比原料更薄：下游能吃下的量有限，这是"加工利润高但规模受限"的来源 */
       float0: 120, mmInv: 120, mmInvMax: 400, mmInv0: 120, eta: 2.2,
@@ -1537,10 +1562,26 @@ Game.prototype._init = function (opts) {
     };
   }
 
+  /* 投入品（docs/19 §4.15）：有牌价、不浮动、不进 hist/twap 循环。
+     仍然建 twap = base，好让 valuePrice/UI 复用同一套访问器而不出 NaN。 */
+  const inputs = {};
+  for (const it of INPUTS) {
+    inputs[it.id] = {
+      id: it.id, name: it.name, icon: it.icon, kind: it.kind, crop: it.crop,
+      pack: it.pack || 1, germ: it.germ == null ? 1 : it.germ, note: it.note || '',
+      market: 'input', hasSpot: false,
+      base: it.base, price: it.base, anchor: it.base, twap: it.base,
+      vol: 0, hist: [],
+      /* ⚠ 下面这几个字段是**故意不建**的：mmInv / depth / float0 / eta / absorbDay。
+         交易代码（quote/_trade/_impact）靠它们算冲击与可买量；投入品固定牌价、无冲击，
+         走的是 _buyInput 这条独立路径。留空能让“误用通用路径”立刻显形（NaN），比默认 0 安全。 */
+    };
+  }
+
   this.s = {
     version: BAL.version, seed, t: 0, day: 1, secPerGameHour: opts.secPerGameHour || 8,
     speed: 1, paused: false, over: false, overReason: null,
-    crops, products, rules,
+    crops, products, inputs, rules,
     eventQueue, activeEvents: [],
     players: [], humanId: 'P0',
     auction: null, auctionCount: 0,
@@ -2337,6 +2378,21 @@ Game.prototype._trade = function (p, cid, qty, side, priceOverride, isLimit, byp
 Game.prototype.quote = function (p, cid, qty, side) {
   const c = this.good(cid);
   qty = Math.max(0, Math.floor(qty || 0));
+  /* 投入品（牌价、无冲击）：照实回一个固定价的报价，
+     避免 UI 或别处误用通用报价时算出 NaN（本项目 NAV 被 NaN 污染过一次）。 */
+  if (this.isInput(cid)) {
+    const corp = CORPS.find(x => x.id === p.corp);
+    const unit = c.base * (c.kind === 'seed' ? (corp.seedDiscount || 1) : 1);
+    const fm = (p.mods.feeMult || 1) * (corp.feeMod || 1);
+    const fr = BAL.marketFee * fm;
+    const fee = unit * qty * fr;
+    const room = this.storageMax(p) - this.storageUsed(p);
+    const maxQty = side === 'buy'
+      ? Math.max(0, Math.floor(Math.min(p.cash / Math.max(0.01, unit * (1 + fr)), room)))
+      : 0;
+    return { qty, avgPrice: unit, gross: unit * qty, fee, total: unit * qty + fee,
+             impactPct: 0, priceAfter: unit, maxQty, feeRate: fr, fixed: true };
+  }
   const feeMult = (c.policyMult || 1) * p.mods.feeMult *
     (CORPS.find(x => x.id === p.corp).feeMod || 1) * (p.taxfreeUntil > this.s.t ? 0 : 1);
   const imp = this._impact(p, cid, qty, side);
@@ -2363,14 +2419,59 @@ Game.prototype.quote = function (p, cid, qty, side) {
   };
 };
 
-Game.prototype.buy = function (p, cid, qty) { return this._trade(p, cid, qty, 'buy'); };
-Game.prototype.sell = function (p, cid, qty) { return this._trade(p, cid, qty, 'sell'); };
+Game.prototype.buy = function (p, cid, qty) {
+  if (this.isInput(cid)) return this._buyInput(p, cid, qty);
+  return this._trade(p, cid, qty, 'buy');
+};
+/* 投入品**只能买、不能卖**（docs/19 §4.15）：买来是为了用，倒手炒农资不是本作玩法。 */
+Game.prototype.sell = function (p, cid, qty) {
+  if (this.isInput(cid)) return { ok: false, msg: '这一档东西买来就是为了用，不能倒手卖。' };
+  return this._trade(p, cid, qty, 'sell');
+};
+
+/* ---- 投入品：固定牌价的买入通道（docs/19 §4.15）-------------------------
+   为什么不复用 _trade：_trade 深依赖 mmInv / depth / anchorImpactShare 算价格冲击
+   与可买量，而投入品**没有这些字段也不该有**（牌价不该被买上去）。
+   与其在通用路径里到处加 if（每加一处都是一个 NaN 风险点），不如给它一条窄通道：
+     ① 校验现金与仓位 ② 按牌价扣款 ③ 入库并更新均价。
+   代价：投入品不进 m.cropTraded / 收货商 / 垄断统计 —— 本来也不该进。 */
+Game.prototype._buyInput = function (p, id, qty) {
+  const g = this.s.inputs && this.s.inputs[id];
+  if (!g) return { ok: false, msg: '没有这种东西' };
+  qty = Math.max(0, Math.floor(qty || 0));
+  if (qty <= 0) return { ok: false, msg: '数量要大于 0' };
+  /* 种子按公司折扣计价（docs/19 §4.15-D）：种植公司的 8 折从“播种时打折”
+     挪到“买入时打折”——同一笔钱，但账要记在**买**这一步，不然播种的账是虚的。 */
+  const corp = CORPS.find(x => x.id === p.corp);
+  const unit = g.base * (g.kind === 'seed' ? (corp.seedDiscount || 1) : 1);
+  const feeMult = (p.mods.feeMult || 1) * (corp.feeMod || 1);
+  const fee = unit * qty * BAL.marketFee * feeMult;
+  const total = unit * qty + fee;
+  const room = this.storageMax(p) - this.storageUsed(p);
+  if (qty > room) return { ok: false, msg: '仓里放不下了（还能放 ' + room + ' 单位）' };
+  if (p.cash < total) return { ok: false, msg: '现金不够（要 ' + Math.round(total) + ' G）' };
+  p.cash -= total;
+  const prevQty = p.storage[id] || 0;
+  const prevAmt = prevQty * ((p.avgCost[id] && p.avgCost[id].c) || unit);
+  p.storage[id] = prevQty + qty;
+  p.avgCost[id] = { q: prevQty + qty, c: (prevAmt + unit * qty) / (prevQty + qty) };
+  p.m.feePaid += fee;
+  p.m.volume += unit * qty;
+  return { ok: true, msg: '买了 ' + qty + ' ' + g.name + '，花了 ' + money(total) + ' G', qty, gross: unit * qty, fee };
+};
 
 /* ---- 3.4 库存 / 估值 ---------------------------------------------------*/
 /* 统一的"货"访问器：作物（crops）与加工品（products）共享交易/库存/估值代码。
    垄断判定仍然只算作物 —— 加工品不参与控盘，否则会出现"垄断辣酱"这种怪东西。 */
-Game.prototype.good = function (id) { return this.s.crops[id] || this.s.products[id]; };
+/* 统一的“货”访问器：作物 / 加工品 / 投入品 共享交易与库存代码。
+   ⚠ this.s.inputs 在旧存档里不存在 → 必须带兜底，否则 good() 抛 TypeError。 */
+Game.prototype.good = function (id) {
+  return this.s.crops[id] || this.s.products[id] || (this.s.inputs && this.s.inputs[id]);
+};
 Game.prototype.isProduct = function (id) { return !!this.s.products[id]; };
+/* 投入品：只能买、不能卖（docs/19 §4.15）。用于把“可卖”语义从“非加工品”收窄成“作物”。 */
+Game.prototype.isInput = function (id) { return !!(this.s.inputs && this.s.inputs[id]); };
+Game.prototype.isCrop = function (id) { return !!this.s.crops[id]; };
 Game.prototype.storageMax = function (p) { return p.storageCap + p.mods.storageBonus; };
 Game.prototype.storageUsed = function (p) {
   let n = 0; for (const k in p.storage) n += p.storage[k]; return n;
@@ -2529,17 +2630,50 @@ Game.prototype._a_plant = function (p, d) {
   if (!CROP_IDS.includes(cid)) return { ok: false, msg: '没有这种作物' };
   const c = this.s.crops[cid];
   const corp = CORPS.find(x => x.id === p.corp);
+  /* 种子来源两支（docs/19 §4.15）——
+     ① seedMustBuy 开（新局默认）：种子得先在市场买下，播种只扣**库存**，
+        不再扣种子钱（钱在“买种子”那一步就付过了，再扣一次就是双重收费）。
+     ② 关（旧存档的 rules 没这个键）：保持原样，播种时按种价扣现金（含公司折扣）。 */
+  const mustBuy = !!this.s.rules.seedMustBuy;
+  const sid = 'seed_' + cid;
   const cost = Math.round(c.seed * corp.seedDiscount * (this.s.rules.doubleLandRent ? 1.25 : 1));
   let idx = d.index;
   if (idx == null) idx = p.plots.findIndex(pl => !pl.crop);
   if (idx < 0 || idx >= p.plots.length) return { ok: false, msg: '没有空地了，先扩一块地' };
   const pl = p.plots[idx];
   if (pl.crop) return { ok: false, msg: '这块地还种着东西' };
-  if (p.cash < cost) return { ok: false, msg: '现金不够买种子（' + cost + ' G）' };
-  p.cash -= cost;
+  let bought = 0;
+  if (mustBuy) {
+    if ((p.storage[sid] || 0) < 1) {
+      /* 手头没种子 → **顺手在市场上买一包**（牌价 + 手续费，种子按公司折扣）。
+         为什么不做成“报错、让玩家自己先去买”：
+         ① 这条主线原本是“点农田 → 种下萝卜”，只有 16 秒（见 04-ui-state.js 的注）；
+            改成必须先去“总账 → 市场 → 种子档 → 买 → 回农田”，第一分钟当场被拆散，
+            而 docs/06 §6 的新手引导脚本里**只要求“种下萝卜”**。
+         ② docs/08 §2.4：前 5 分钟决定成败（漏斗杀手）。
+         ⇒ 自动补一包，既保住那一分钟，也让种子确实**来自市场**、按市场价出钱。
+         ⚠ 代价（已记入 docs/19 §4.18.2）：想“提前囤种省手续费”的人没有额外好处，
+           “去市场买种子”这件事对玩家是**可见但不强制**的。 */
+      const rb = this._buyInput(p, sid, 1);
+      if (!rb.ok) return { ok: false, msg: '手头没这号种子了，先去「种子·农资」那档买一份。' };
+      bought = 1;
+    }
+    /* 地租附加（doubleLandRent 那 25%）**仍然在播种时付**：它是地租，不是种子钱。
+       把它留在这一侧，是为了让“地租规则”与“种子要不要买”两个开关互不干扰。 */
+    const rent = Math.round(c.seed * corp.seedDiscount * (this.s.rules.doubleLandRent ? 0.25 : 0));
+    if (p.cash < rent) return { ok: false, msg: '现金不够付这一季的地租（' + rent + ' G）' };
+    p.storage[sid] -= 1;
+    if (p.storage[sid] <= 0) delete p.storage[sid];
+    p.cash -= rent;
+  } else {
+    if (p.cash < cost) return { ok: false, msg: '现金不够买种子（' + cost + ' G）' };
+    p.cash -= cost;
+  }
   const growMin = c.growH * 60 * p.mods.growMult;
   pl.crop = cid; pl.plantedT = this.s.t; pl.matureT = this.s.t + growMin; pl.ready = false;
-  return { ok: true, msg: '种下了 ' + c.icon + c.name + '，' + c.growH + ' 游戏小时后可以收割', idx };
+  /* 如实告知种子从哪来 —— 不然“钱怎么少了”会变成猜谜。 */
+  const seedNote = bought ? '（顺手在市场上买了一包种子）' : '';
+  return { ok: true, msg: '种下了 ' + c.icon + c.name + seedNote + '，' + c.growH + ' 游戏小时后可以收割', idx };
 };
 
 Game.prototype._a_plantAll = function (p, d) {
@@ -3222,13 +3356,20 @@ Game.prototype._npcDecide = function (p) {
   // 1) 自动收割成熟作物
   for (let i = 0; i < p.plots.length; i++) if (p.plots[i].ready) this._harvest(p, i, true);
 
-  // 2) 补种：根据耐心选作物。耐心高→长周期；激进→短周期快速周转
+  /* 2) 补种：根据耐心选作物。耐心高→长周期；激进→短周期快速周转
+     ⚠ 种子必须先在市场买（docs/19 §4.15）之后，NPC 也必须**先备料**，
+        否则农民永远种不了地 —— 660 局仿真与「新手增收」会一起失真（这是本刀的硬前提）。
+        就地买一份够这块地用即可，不囤（囤种子对 NPC 没意义，还会占仓）。 */
+  const mustBuySeed = !!s.rules.seedMustBuy;
   for (const pl of p.plots) {
     if (pl.crop) continue;
     const cid = w.patience > 0.7 ? 'ginseng' : (w.aggro > 0.6 ? 'chili' : 'radish');
     const c = s.crops[cid];
     const cost = c.seed;
-    if (p.cash > cost + p.debt * 0.05) this._a_plant(p, { crop: cid });
+    if (p.cash > cost + p.debt * 0.05) {
+      if (mustBuySeed && (p.storage['seed_' + cid] || 0) < 1) this._buyInput(p, 'seed_' + cid, 1);
+      this._a_plant(p, { crop: cid });
+    }
   }
 
   // 3) 卖出：估算自己的成本与当前价（作物与加工品一起处理）
@@ -4085,7 +4226,7 @@ Game.prototype.settle = function () {
  * -------------------------------------------------------------------------*/
 return {
   BAL, CROPS, CROP_IDS, CORPS, TALENTS, EVENT_POOL, LOT_POOL,
-  PRODUCTS, PRODUCT_IDS, PRODUCT_MARGIN,
+  PRODUCTS, PRODUCT_IDS, PRODUCT_MARGIN, INPUTS, INPUT_IDS, MARKET_GOODS,
   Game, Rng, hash32, makeSeed, money, clamp, round2,
   newGame: opts => new Game(opts),
   /* 存档：把整个状态序列化成字符串 / 反序列化回一个可继续跑的 Game
@@ -4830,6 +4971,52 @@ function buyerPanel() {
   return rows ? `<div class="dl dim" style="margin:2px 0 6px">🚪 门口有人在等 —— 卖给他不会砸价</div>${rows}` : '';
 }
 
+/* §4.15 ① 种子·农资 —— 投入品档（买来是为了用，**只能买不能卖**）。
+   为什么单独一套小卡，不复用下面作物/加工品那张大卡：
+   大卡里有挂单、借货看跌、收货商、市场占有……这些对投入品**全都不适用**
+   （它们不参与控价，也没有做市商）。硬套会渲染出一堆点了就报错的按钮。
+   ⚠ 图标直接用 `g.icon`（数据里带），不走 icon() —— 少一个“它认不认得这个 id”的未知数。 */
+function inputSection() {
+  const ids = (GG.MARKET_GOODS || []).filter(id => G.isInput(id));
+  if (!ids.length) return '';
+  const rows = ids.map(id => {
+    const g = G.good(id);
+    const q = ui.qty[id] == null ? 10 : ui.qty[id];
+    const qb = G.quote(HUMAN, id, q, 'buy');
+    const held = HUMAN.storage[id] || 0;
+    const useTxt = g.crop
+      ? ' · 种' + esc((GG.CROPS.find(c => c.id === g.crop) || {}).name || '') + '用'
+      : '';
+    const noteTxt = g.note ? ' · ' + esc(g.note) : '';
+    return `<div class="crop">
+      <div class="hd">
+        <div class="ic">${g.icon}</div>
+        <div class="p">
+          <div class="row between"><div class="px mono">${fmt1(qb.avgPrice)}<span class="dim" style="font-size:11px"> G</span></div>
+            <div class="dl dim">今天的价</div></div>
+          <div class="dl dim">${esc(g.name)}${useTxt}${noteTxt}</div>
+        </div>
+      </div>
+      <div class="stats">
+        <div>我的持仓<b>${held}</b></div>
+        <div>最多可买<b>${qb.maxQty}</b></div>
+      </div>
+      <div class="qty">
+        <input type="number" inputmode="numeric" min="0" id="q_${id}" value="${q}" data-qin="${id}">
+        <div class="chips">
+          <button class="chip" data-qset="${id}:10">10</button>
+          <button class="chip" data-qset="${id}:50">50</button>
+          <button class="chip" data-qset="${id}:max">买满(${qb.maxQty})</button>
+        </div>
+      </div>
+      <div class="quote">买入 ${q} 单位：要花 <b>${fmt(qb.total)}</b> G（含手续费 ${fmt1(qb.fee)}）<br>
+        <span class="dim">这一档买来是为了用，不能倒手卖。</span></div>
+      <div class="btnrow"><button class="btn g" data-buy="${id}">买入</button></div>
+    </div>`;
+  }).join('');
+  return `<div class="dl dim" style="margin:2px 0 6px">🧺 种子·农资 —— 买来是为了用，不能倒手卖</div>${rows}`;
+}
+
 function viewMarket() {
   const s = G.s;
   /* 加工品只在"你已经接触过"之后才出现，避免开局就丢 6 张卡给新手 */
@@ -4838,7 +5025,7 @@ function viewMarket() {
     return (HUMAN.storage[id] || 0) > 0 || HUMAN.craftJobs.some(j => j.pid === id) || HUMAN.workshops > 0;
   });
 
-  return buyerPanel() + goods.map(cid => {
+  return inputSection() + buyerPanel() + goods.map(cid => {
     const c = G.good(cid);
     const isProd = G.isProduct(cid);
     const chg = (c.price / c.base - 1) * 100;

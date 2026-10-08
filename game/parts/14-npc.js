@@ -16,13 +16,20 @@ Game.prototype._npcDecide = function (p) {
   // 1) 自动收割成熟作物
   for (let i = 0; i < p.plots.length; i++) if (p.plots[i].ready) this._harvest(p, i, true);
 
-  // 2) 补种：根据耐心选作物。耐心高→长周期；激进→短周期快速周转
+  /* 2) 补种：根据耐心选作物。耐心高→长周期；激进→短周期快速周转
+     ⚠ 种子必须先在市场买（docs/19 §4.15）之后，NPC 也必须**先备料**，
+        否则农民永远种不了地 —— 660 局仿真与「新手增收」会一起失真（这是本刀的硬前提）。
+        就地买一份够这块地用即可，不囤（囤种子对 NPC 没意义，还会占仓）。 */
+  const mustBuySeed = !!s.rules.seedMustBuy;
   for (const pl of p.plots) {
     if (pl.crop) continue;
     const cid = w.patience > 0.7 ? 'ginseng' : (w.aggro > 0.6 ? 'chili' : 'radish');
     const c = s.crops[cid];
     const cost = c.seed;
-    if (p.cash > cost + p.debt * 0.05) this._a_plant(p, { crop: cid });
+    if (p.cash > cost + p.debt * 0.05) {
+      if (mustBuySeed && (p.storage['seed_' + cid] || 0) < 1) this._buyInput(p, 'seed_' + cid, 1);
+      this._a_plant(p, { crop: cid });
+    }
   }
 
   // 3) 卖出：估算自己的成本与当前价（作物与加工品一起处理）

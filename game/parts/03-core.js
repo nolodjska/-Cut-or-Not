@@ -44,6 +44,10 @@ Game.prototype._init = function (opts) {
     intelPublic: ruleRng.chance(0.20),
     auctionBig: ruleRng.chance(0.25),
     doubleStoragePrice: ruleRng.chance(0.20),
+    /* 种子必须先在市场买（docs/19 §4.15）。**新局默认开**；
+       旧存档的 rules 里没有这个键 ⇒ 读出来是 undefined ⇒ falsy
+       ⇒ 自动走“播种直接扣现金”的老路径（兼容，不改旧档行为）。 */
+    seedMustBuy: true,
   };
 
   const crops = {};
@@ -60,6 +64,7 @@ Game.prototype._init = function (opts) {
          混为一谈会让一次正常收成就把价格砸穿（已修）。 */
       depth: Math.max(60, c.absorbDay * BAL.depthMult),
       vol: c.vol, rotH: c.rotH, mono: c.mono, tier: c.tier, note: c.note,
+      market: c.market || 'primary', hasSpot: true,
       mmInv: c.float0,                   // 做市商/对手盘库存
       eventMult: 1, policyMult: 1, rumorUntil: 0, rumorMult: 1,
       peak: round2(c.base * drift), trough: round2(c.base * drift),
@@ -76,6 +81,7 @@ Game.prototype._init = function (opts) {
     products[pd.id] = {
       id: pd.id, name: pd.name, icon: pd.icon, from: pd.from, need: pd.need, out: pd.out,
       hours: pd.hours, absorbDay: pd.absorbDay, note: pd.note,
+      market: pd.market || 'craft', hasSpot: true,
       base: pd.base, price: p0, anchor: pd.base, twap: p0, vol: 0.09,
       /* 产品市场比原料更薄：下游能吃下的量有限，这是"加工利润高但规模受限"的来源 */
       float0: 120, mmInv: 120, mmInvMax: 400, mmInv0: 120, eta: 2.2,
@@ -87,10 +93,26 @@ Game.prototype._init = function (opts) {
     };
   }
 
+  /* 投入品（docs/19 §4.15）：有牌价、不浮动、不进 hist/twap 循环。
+     仍然建 twap = base，好让 valuePrice/UI 复用同一套访问器而不出 NaN。 */
+  const inputs = {};
+  for (const it of INPUTS) {
+    inputs[it.id] = {
+      id: it.id, name: it.name, icon: it.icon, kind: it.kind, crop: it.crop,
+      pack: it.pack || 1, germ: it.germ == null ? 1 : it.germ, note: it.note || '',
+      market: 'input', hasSpot: false,
+      base: it.base, price: it.base, anchor: it.base, twap: it.base,
+      vol: 0, hist: [],
+      /* ⚠ 下面这几个字段是**故意不建**的：mmInv / depth / float0 / eta / absorbDay。
+         交易代码（quote/_trade/_impact）靠它们算冲击与可买量；投入品固定牌价、无冲击，
+         走的是 _buyInput 这条独立路径。留空能让“误用通用路径”立刻显形（NaN），比默认 0 安全。 */
+    };
+  }
+
   this.s = {
     version: BAL.version, seed, t: 0, day: 1, secPerGameHour: opts.secPerGameHour || 8,
     speed: 1, paused: false, over: false, overReason: null,
-    crops, products, rules,
+    crops, products, inputs, rules,
     eventQueue, activeEvents: [],
     players: [], humanId: 'P0',
     auction: null, auctionCount: 0,

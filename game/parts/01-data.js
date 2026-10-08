@@ -157,6 +157,25 @@ const PRODUCT_MARGIN = 0.45;   // 加工增值率（相对原料估值价）
 const ALL_GOODS = CROP_IDS.concat(PRODUCT_IDS);   // 交易循环统一遍历"所有可交易的东西"
 
 /* 公司类型：六种全部开放（原案 §4.2 的六家公司） */
+/* 投入品（docs/19 §4.15 / §4.18.2）：**买来是为了生产，不是转卖**。
+   与作物/加工品的两条硬区别：
+     ① 只能买、不能卖（`seedMustBuy` 开启后，播种从这里扣，不再直接扣现金）
+     ② 有“牌价”、不做现货浮动（`hasSpot:false`）—— 投入品不该被炒
+   ⚠ 它们**不进 ALL_GOODS**：那条链是“价格会浮动的货”，投入品不浮动。
+     市场面板用 MARKET_GOODS 取全集，避免两处各写一份清单（本项目手写清单漏过一次）。 */
+const INPUTS = [
+  { id:'seed_radish',  name:'萝卜种', icon:'🥕', kind:'seed', crop:'radish',  base:44,  pack:1, germ:0.95, tier:'入门' },
+  { id:'seed_chili',   name:'辣椒种', icon:'🌶️', kind:'seed', crop:'chili',   base:120, pack:1, germ:0.92, tier:'主力' },
+  { id:'seed_ginseng', name:'人参种', icon:'🌿', kind:'seed', crop:'ginseng', base:380, pack:1, germ:0.80, tier:'高端' },
+  { id:'fert',      name:'化肥', icon:'🧪', kind:'agchem', base:60, note:'撒下去，这一季多收一点。' },
+  { id:'pesticide', name:'农药', icon:'🧴', kind:'agchem', base:90, note:'虫子来得凶的那几天，全靠它。' },
+  { id:'mulch',     name:'农膜', icon:'🎏', kind:'agchem', base:40, note:'早春盖一层，苗出得齐。' },
+];
+const INPUT_IDS = INPUTS.map(i => i.id);
+/* 上市场的东西 = 全集（作物 + 加工品 + 投入品）。市场面板只读这一条，不许手写清单。
+   ⚠ 前三类里只有作物/加工品会浮动；投入品是牌价。分档在 UI 侧按 `market` 字段做。 */
+const MARKET_GOODS = ALL_GOODS.concat(INPUT_IDS);
+
 const CORPS = [
   { id:'grow',  name:'种植公司', tag:'稳健经营', desc:'种地是你的命。初始多 2 块地、种子成本 8 折、收成多 10%。', route:'A', stars:{ stab:4, profit:2, ease:2 },
     start: { plots:2, cashMod:-400, storageMod:0 }, seedDiscount:0.8, yieldMult:1.10, feeMod:1.0, intelMod:1.0 },

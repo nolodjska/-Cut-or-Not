@@ -120,6 +120,52 @@ function buyerPanel() {
   return rows ? `<div class="dl dim" style="margin:2px 0 6px">🚪 门口有人在等 —— 卖给他不会砸价</div>${rows}` : '';
 }
 
+/* §4.15 ① 种子·农资 —— 投入品档（买来是为了用，**只能买不能卖**）。
+   为什么单独一套小卡，不复用下面作物/加工品那张大卡：
+   大卡里有挂单、借货看跌、收货商、市场占有……这些对投入品**全都不适用**
+   （它们不参与控价，也没有做市商）。硬套会渲染出一堆点了就报错的按钮。
+   ⚠ 图标直接用 `g.icon`（数据里带），不走 icon() —— 少一个“它认不认得这个 id”的未知数。 */
+function inputSection() {
+  const ids = (GG.MARKET_GOODS || []).filter(id => G.isInput(id));
+  if (!ids.length) return '';
+  const rows = ids.map(id => {
+    const g = G.good(id);
+    const q = ui.qty[id] == null ? 10 : ui.qty[id];
+    const qb = G.quote(HUMAN, id, q, 'buy');
+    const held = HUMAN.storage[id] || 0;
+    const useTxt = g.crop
+      ? ' · 种' + esc((GG.CROPS.find(c => c.id === g.crop) || {}).name || '') + '用'
+      : '';
+    const noteTxt = g.note ? ' · ' + esc(g.note) : '';
+    return `<div class="crop">
+      <div class="hd">
+        <div class="ic">${g.icon}</div>
+        <div class="p">
+          <div class="row between"><div class="px mono">${fmt1(qb.avgPrice)}<span class="dim" style="font-size:11px"> G</span></div>
+            <div class="dl dim">今天的价</div></div>
+          <div class="dl dim">${esc(g.name)}${useTxt}${noteTxt}</div>
+        </div>
+      </div>
+      <div class="stats">
+        <div>我的持仓<b>${held}</b></div>
+        <div>最多可买<b>${qb.maxQty}</b></div>
+      </div>
+      <div class="qty">
+        <input type="number" inputmode="numeric" min="0" id="q_${id}" value="${q}" data-qin="${id}">
+        <div class="chips">
+          <button class="chip" data-qset="${id}:10">10</button>
+          <button class="chip" data-qset="${id}:50">50</button>
+          <button class="chip" data-qset="${id}:max">买满(${qb.maxQty})</button>
+        </div>
+      </div>
+      <div class="quote">买入 ${q} 单位：要花 <b>${fmt(qb.total)}</b> G（含手续费 ${fmt1(qb.fee)}）<br>
+        <span class="dim">这一档买来是为了用，不能倒手卖。</span></div>
+      <div class="btnrow"><button class="btn g" data-buy="${id}">买入</button></div>
+    </div>`;
+  }).join('');
+  return `<div class="dl dim" style="margin:2px 0 6px">🧺 种子·农资 —— 买来是为了用，不能倒手卖</div>${rows}`;
+}
+
 function viewMarket() {
   const s = G.s;
   /* 加工品只在"你已经接触过"之后才出现，避免开局就丢 6 张卡给新手 */
@@ -128,7 +174,7 @@ function viewMarket() {
     return (HUMAN.storage[id] || 0) > 0 || HUMAN.craftJobs.some(j => j.pid === id) || HUMAN.workshops > 0;
   });
 
-  return buyerPanel() + goods.map(cid => {
+  return inputSection() + buyerPanel() + goods.map(cid => {
     const c = G.good(cid);
     const isProd = G.isProduct(cid);
     const chg = (c.price / c.base - 1) * 100;

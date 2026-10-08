@@ -1,6 +1,13 @@
 /* ===== part: 07-metrics.js ===== */
-Game.prototype.good = function (id) { return this.s.crops[id] || this.s.products[id]; };
+/* 统一的“货”访问器：作物 / 加工品 / 投入品 共享交易与库存代码。
+   ⚠ this.s.inputs 在旧存档里不存在 → 必须带兜底，否则 good() 抛 TypeError。 */
+Game.prototype.good = function (id) {
+  return this.s.crops[id] || this.s.products[id] || (this.s.inputs && this.s.inputs[id]);
+};
 Game.prototype.isProduct = function (id) { return !!this.s.products[id]; };
+/* 投入品：只能买、不能卖（docs/19 §4.15）。用于把“可卖”语义从“非加工品”收窄成“作物”。 */
+Game.prototype.isInput = function (id) { return !!(this.s.inputs && this.s.inputs[id]); };
+Game.prototype.isCrop = function (id) { return !!this.s.crops[id]; };
 Game.prototype.storageMax = function (p) { return p.storageCap + p.mods.storageBonus; };
 Game.prototype.storageUsed = function (p) {
   let n = 0; for (const k in p.storage) n += p.storage[k]; return n;

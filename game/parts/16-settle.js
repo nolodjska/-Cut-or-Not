@@ -235,7 +235,7 @@ Game.prototype.settle = function () {
  * -------------------------------------------------------------------------*/
 return {
   BAL, CROPS, CROP_IDS, CORPS, TALENTS, EVENT_POOL, LOT_POOL,
-  PRODUCTS, PRODUCT_IDS, PRODUCT_MARGIN,
+  PRODUCTS, PRODUCT_IDS, PRODUCT_MARGIN, INPUTS, INPUT_IDS, MARKET_GOODS,
   Game, Rng, hash32, makeSeed, money, clamp, round2,
   newGame: opts => new Game(opts),
   /* 存档：把整个状态序列化成字符串 / 反序列化回一个可继续跑的 Game
