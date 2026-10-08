@@ -14,10 +14,16 @@ function renderTop() {
        变成不可点的 <b>🏠 总账</b> —— 既写错了“你现在在哪”，又**没有出路**
        （信匣成了死胡同，只能刷新页面逃出来）。2026-10-08 真机截图看出来的。
      ⚠ 二级那一档的 data-root 从 "1" 改成 "ledger"：两个值都能用（分派里
-       非 'mail' 一律当作 'ledger'），但写明白才不会让下一个人以为是随便填的。 */
+       非 'mail' 一律当作 'ledger'），但写明白才不会让下一个人以为是随便填的。
+     ⚠ 一律写成 `!== 'ledger'`：一级屏现在有 7 张（总账/信匣/市场/情报/钱庄/拍卖/图鉴），
+       但凡不是总账本身，左上角都得有回总账的路 —— 上一版把信匣写成死胡同，就是这个坑。
+     ⚠ 本注释块被写坏过**两次**：我先把注释的收尾符写在了中间（后面几行落到注释外），
+       接着“说明这件事”的那行又把收尾符原样写了进去 —— 于是注释在那一行就断了，
+       后面的说明文字全变成代码，ui.js 报 “Unexpected identifier”。
+       ⇒ 结论：**注释里永远不要出现注释收尾符的那两个字符**，要说它就写“注释收尾符”。 */
   const crumb = !ui.root
     ? '<button class="crumb" data-root="ledger">← 集团</button>'
-    : (ui.root === 'mail'
+    : (ui.root !== 'ledger'
       ? '<button class="crumb" data-root="ledger">← 总账</button>'
       : '<b class="crumb on">🏠 总账</b>');
   $('#clock').innerHTML = crumb + '第 <b>' + dayOf(s.t) + '</b> 天 <b>' + hhmm(s.t) + '</b>' +
@@ -68,12 +74,15 @@ function renderTabs() {
     return;
   }
   const s = G.s;
+  /* ⚠ 只剩两个：市场/情报/钱庄/拍卖/图鉴 已**搬进集团层**（docs/20 §2.1 Z4「进店行」）。
+     它们本来就是全局动作（行情 · 情报行 · 钱庄 · 拍卖会 · 图鉴），不是“这家公司的活”。
+     留在底栏会两头打架：底栏说“这是这家公司”，而那几屏其实与哪家公司无关。 */
   const tabs = [
-    ['farm', '农田'], ['make', '制造'], ['market', '市场'], ['intel', '情报'], ['bank', '钱庄'],
-    ['auction', '拍卖'], ['codex', '图鉴'], ['end', '结算'],
+    ['farm', '农田'], ['make', '制造'], ['end', '结算'],
   ];
   const dot = {};
-  if (s.auction && s.auction.phase !== 'done') dot.auction = 1;
+  /* ⚠ “拍卖会进行中”那个红点跟着拍卖一起搬去进店行了（见 17-ledger 的 Z4）——
+     留在这里会指向一个不存在的页签，变成永远看不见的死代码。 */
   if (HUMAN.talentOffers) dot.farm = 1;
   if (HUMAN.craftJobs.length) dot.make = 1;
   if (s.over) dot.end = 1;

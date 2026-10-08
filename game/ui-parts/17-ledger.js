@@ -30,15 +30,15 @@ function ledgerBelt() {
   const out = [];
   const sheet = G.consolidated(HUMAN);
   if (HUMAN.cash < 0) {
-    out.push('<button class="alert" data-view="bank">⚠ 现金已经是负的（' + fmt(HUMAN.cash) + ' G），钱庄随时上门</button>');
+    out.push('<button class="alert" data-root="bank">⚠ 现金已经是负的（' + fmt(HUMAN.cash) + ' G），钱庄随时上门</button>');
   }
   if (sheet.debt > 0 && sheet.nav < sheet.debt * GG.BAL.maintRatio * 1.5) {
-    out.push('<button class="alert" data-view="bank">⚠ 欠的账快赶上手里的家底了</button>');
+    out.push('<button class="alert" data-root="bank">⚠ 欠的账快赶上手里的家底了</button>');
   }
   const a = G.s.auction;
   if (a && a.phase !== 'done') {
     const end = a.phase === 'sealed' ? a.sealedEndT : a.openEndT;
-    out.push('<button class="alert" data-view="auction">⚠ 拍卖会进行中，剩 ' + secLeftTxt(end - G.s.t) + '</button>');
+    out.push('<button class="alert" data-root="auction">⚠ 拍卖会进行中，剩 ' + secLeftTxt(end - G.s.t) + '</button>');
   }
   /* 收尾：待读的信也缀在告急带尾部（docs/20 §2.1 把“告急带 → 信匣”定成一条路）。
      没有这行，信匣就只能靠顶栏那颗小印章发现 —— 新手根本不会去点。
@@ -88,6 +88,12 @@ function ledgerBook() {
   return rows;
 }
 
+/* 进店行的一个键（Z4）。dot = 带红点。 */
+function shopBtn(mode, name, dot) {
+  return '<button class="shopbtn" data-root="' + mode + '">' + name +
+    (dot ? '<span class="dot"></span>' : '') + '</button>';
+}
+
 function viewLedger() {
   const book = ledgerBook();
   const belt = ledgerBelt();
@@ -125,6 +131,19 @@ function viewLedger() {
             : '<button class="btn" disabled>只参股，不下手</button>') +
         '</div>' +
       '</div>').join('') + '</div>' +
+
+    /* Z4 进店行（docs/20 §2.1）：低频重功能收口成一行，把屏幕让给 Z2。
+       ⚠ 2026-10-08 玩家要求把 市场/情报/钱庄/拍卖/图鉴 从底栏**搬到总账** ——
+         它们本来就是全局动作（行情 / 情报行 / 钱庄 / 拍卖会 / 图鉴），不是“这家公司的活”；
+         挂在底栏会两头打架：底栏说“这家公司”，而那几屏与哪家公司无关。
+       ⚠ 一律走 data-root：用 data-view 会把 ui.root 复位成二级，画面不变（R1 那个 bug 的成因），
+         而且底栏会冒出农田/制造页签。
+       ⚠ 拍卖那个红点原本在底栏页签上，跟着搬过来 —— 信号不因为搬家就丢掉。 */
+    '<div class="shop">' +
+      shopBtn('market', '市场') + shopBtn('intel', '情报') +
+      shopBtn('bank', '钱庄') + shopBtn('auction', '拍卖', !!(G.s.auction && G.s.auction.phase !== 'done')) +
+      shopBtn('codex', '图鉴') +
+    '</div>' +
 
   '</div>';
   /* Z3「组合摘要」本批**故意不画**（code-reviewer 子代理扫出的 R4）：

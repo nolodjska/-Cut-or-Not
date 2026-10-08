@@ -103,7 +103,14 @@ for (const corp of ['grow', 'trade', 'intel', 'shell', 'make', 'fin']) {
     }
     D.setView('farm');
     if (!D.topHtml.includes('第')) throw new Error('顶栏没渲染');
-    if (!D.tabHtml.includes('市场')) throw new Error('标签没渲染');
+    /* ⚠ 底栏只剩 农田/制造：市场/情报/钱庄/拍卖/图鉴 已搬进集团层（总账 Z4 进店行）。
+       这里顺手把“搬家”锁住 —— 底栏不许再冒出那 5 个，否则两级导航又会打架（docs/20 §3）。 */
+    if (!D.tabHtml.includes('农田') || !D.tabHtml.includes('制造')) throw new Error('标签没渲染');
+    for (const gone of ['市场', '情报', '钱庄', '拍卖', '图鉴']) {
+      if (D.tabHtml.includes(gone)) {
+        throw new Error('底栏又冒出集团层面板「' + gone + '」：' + D.tabHtml.slice(0, 120));
+      }
+    }
   });
 }
 
@@ -446,7 +453,7 @@ ok('★ 总账的告急带按钮真的能换屏（R1 回归锁）', () => {
   if (!D.viewHtml.includes('钱庄随时上门')) {
     throw new Error('现金转负后告急带没出现：' + D.viewHtml.slice(0, 90));
   }
-  click({ view: 'bank' });
+  click({ root: 'bank' });
   D.render();
   if (D.viewHtml.includes('手里的公司')) throw new Error('点了告急带却没离开总账（R1 复发）');
 });
@@ -551,6 +558,36 @@ ok('★ 别的公司来信：能答复，且答了钱货真的会动（合作请
     throw new Error('已答复的提案还留着可点的按钮（假按钮）');
   }
   click({ enter: 'grow' });   /* 还原成二级，别把状态漏给后面的测试 */
+});
+
+console.log('\n2.13) 进店行：市场 / 情报 / 钱庄 / 拍卖 / 图鉴 搬进集团层（docs/20 §2.1 Z4）');
+/* ⚠ 为什么这五个键必须逐个点一遍（而不是只看属性名对不对）：
+   它们是刚从底栏搬来的一级屏，而分派里的 `d.root` 曾经写成
+   `d.root === 'mail' ? 'mail' : 'ledger'` 的两档写法 ——
+   那种写法下 5 个键会**全部塌回总账**：属性名正确、分支也存在、
+   连 wiring-check 都抓不到（它只验“属性名有对应分支”），但从玩家看就是
+   “点了没反应”。这与 R1（告急带）是同一类盲区：
+   静态检查看不出“跑到哪去了”，只有真点一次才知道。 */
+ok('★ 总账进店行的 5 个键每个都能换屏，且都能回总账', () => {
+  D.start('grow', 'GG-UISHOP', 8);
+  click({ root: 'ledger' });
+  D.render();
+  if (!D.viewHtml.includes('手里的公司')) throw new Error('没进总账');
+  const marks = { market: '市场', intel: '情报', bank: '钱庄', auction: '拍卖', codex: '图鉴' };
+  for (const k in marks) {
+    click({ root: k });
+    D.render();
+    if (D.viewHtml.includes('手里的公司')) {
+      throw new Error('进店行的「' + marks[k] + '」点了没换屏（塌回总账 = 死按钮）');
+    }
+    if (D.viewHtml.indexOf('undefined') >= 0 || D.viewHtml.indexOf('NaN') >= 0) {
+      throw new Error('「' + marks[k] + '」屏里有 undefined/NaN：' + D.viewHtml.slice(0, 120));
+    }
+    click({ root: 'ledger' });
+    D.render();
+    if (!D.viewHtml.includes('手里的公司')) throw new Error('从「' + marks[k] + '」回不到总账（死胡同）');
+  }
+  click({ enter: 'grow' });   /* 还原成二级 */
 });
 
 console.log('\n2.9) 回归：界面上不许出现 NaN（2026-10-08 真机肉眼发现「扩一块地 (NaNG)」）');

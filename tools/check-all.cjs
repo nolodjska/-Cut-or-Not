@@ -14,6 +14,10 @@ const ROOT = path.resolve(__dirname, '..');
 
 /* [显示名, 命令, 认哪一行算结论] */
 const STEPS = [
+  /* 语法自检放第一项：它最便宜，而且能报出**具体文件与行号** ——
+     其它守卫只会说“ui.js 加载即抛错”，那等于没说是谁写的错。
+     （2026-10-08 我两次把注释写坏，两次都是靠手工逐个 --check 才定位的。） */
+  ['语法自检   ', 'node tools/syntax-check.cjs',         /语法自检/],
   ['构建       ', 'node tools/build.mjs',                 /单文件体积/],
   ['产物自检   ', 'node tools/dist-check.cjs',            /产物自检/],
   ['接线自检   ', 'node tools/wiring-check.cjs',          /接线自检/],

@@ -7,6 +7,12 @@ function render(force) {
 
   renderTop(); renderTabs();
   const map = { farm: viewFarm, make: viewMake, market: viewMarket, intel: viewIntel, bank: viewBank, auction: viewAuction, codex: viewCodex, end: viewEnd };
+  /* 一级屏（集团层）模式表：与上面 7 个二级页签是**两套屏幕**（docs/20 §3）。
+     2026-10-08:市场/情报/钱庄/拍卖/图鉴 这 5 个面板从二级页签**搬进集团层** ——
+     它们本来就是全局动作（行情 · 情报行 · 钱庄 · 拍卖会 · 图鉴），不是“这家公司的活”。
+     ⚠ 新增一级屏只需在这张表加一行 + 在 15-events 的白名单加一项，层次不用动。 */
+  const first = { ledger: viewLedger, mail: viewMail, market: viewMarket,
+                  intel: viewIntel, bank: viewBank, auction: viewAuction, codex: viewCodex };
 
   /* ⚠ 玩家 2026-10-08 实测：「输入框疯狂闪动，我填购买/卖出个数的时候一直往回跳」。
      根因：#view 每 120ms 整体重写 innerHTML，里面的 <input> 是**被销毁重建**的。
@@ -26,7 +32,7 @@ function render(force) {
   /* 一级屏是**模式下的一屏**：ui.root 存的是去哪张一级屏
      （'' / false = 二级公司工作台 | 'ledger' 总账 | 'mail' 信匣；docs/20 §3）。
      以后加行市/黄历只在这里多一个分支，不用再动层次。 */
-  const html = ui.root === 'mail' ? viewMail() : (ui.root ? viewLedger() : (map[view] || viewFarm)());
+  const html = ui.root ? (first[ui.root] || viewLedger)() : (map[view] || viewFarm)();
   const typing = ae && ae.tagName === 'INPUT' && vw.contains && vw.contains(ae);
   const rewrote = !typing && vw.innerHTML !== html;
   if (rewrote) vw.innerHTML = html;

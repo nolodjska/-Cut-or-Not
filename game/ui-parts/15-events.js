@@ -58,7 +58,17 @@ function handleAction(e) {
        'ledger'（默认，合并老存档里的 "1"） / 'mail'（顶栏信匣章）。
      ⚠ ui.root 因此从布尔变成**模式串**：布尔存不下“我有两张一级屏”，
        以后加行市/黄历还得再改一次。falsy 一律表示二级公司工作台。 */
-  if (d.root) { ui.root = d.root === 'mail' ? 'mail' : 'ledger'; render(true); return; }
+  /* ⚠ 一级屏模式**必须白名单放行**：原来写的是 `d.root === 'mail' ? 'mail' : 'ledger'` 的两档写法，
+   一级屏一旦多起来（现在 7 张），进店行的 5 个键会**全部塌成总账**（点了没反应 = 死按钮）。
+   这与面包屑那次（信匣死胡同）是同一个坑的两面：**旧的两档假设**。
+   白名单与 14-render 里的 first 表同源，改一处要一起改。
+   顺手清 mailOpenId：从任意一级屏回总账，下次进信匣不该直接弹在上次那封信上。 */
+if (d.root) {
+       const FIRST_MODES = ['ledger', 'mail', 'market', 'intel', 'bank', 'auction', 'codex'];
+       ui.root = FIRST_MODES.indexOf(d.root) >= 0 ? d.root : 'ledger';
+       mailOpenId = null;
+       render(true); return;
+     }
   /* 回公司层时顺手关掉信匣详情：否则下次进信匣会直接弹在上次那封信上。 */
   if (d.enter) { ui.root = false; mailOpenId = null; view = 'farm'; render(true); return; }
   if (d.corp || d.pace) return;

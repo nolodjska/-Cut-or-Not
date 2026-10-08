@@ -346,6 +346,11 @@ body{
 .mdec{display:flex;gap:8px;margin-top:12px}
 .mdec .btn{flex:1 1 0}
 .mdec.done{margin-top:12px;padding:8px 10px;border-radius:8px;background:rgba(0,0,0,.05);font-size:12px;opacity:.7}
+/* 进店行（总账 Z4）：集团层的低频重功能收口成一行 —— docs/20 §2.1。
+   2026-10-08：市场/情报/钱庄/拍卖/图鉴 从底栏搬来这里（它们是全局动作，不是"这家公司的活"）。
+   ⚠ 类名不能用 .sbtn —— 那是顶栏速度键已经占了的。 */
+.shop{display:flex;gap:6px;margin-top:10px}
+.shopbtn{flex:1 1 0;position:relative;padding:9px 0;border:1px solid rgba(0,0,0,.14);border-radius:9px;background:rgba(255,255,255,.5);font-size:12.5px;color:inherit;font-family:inherit}
 .firm .ft{display:flex;align-items:center;gap:6px;font-size:14px;font-weight:700}
 /* 家底那行是本栏最后一行，只留上边距（原来还带 7px 下边距，是按钮另起一行时的旧间距） */
 .firm .fl{display:flex;align-items:center;gap:6px;margin-top:5px;font-size:11.5px;opacity:.75}

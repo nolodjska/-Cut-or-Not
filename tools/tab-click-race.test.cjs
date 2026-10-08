@@ -56,7 +56,7 @@ global.document = {
      这里复刻"指针底下确实是个标签按钮"的情形。 */
   elementsFromPoint() {
     hitTestCalls++;
-    return [{ closest: () => ({ dataset: { view: 'market' } }) }];
+    return [{ closest: () => ({ dataset: { view: 'make' } }) }];   /* market 已搬去集团层，底栏只剩 农田/制造 */
   },
 };
 global.window = global;
@@ -126,8 +126,8 @@ ok('连续 20 帧渲染后标签栏未被重写', () => {
 console.log('\nT2 视图切换时必须更新高亮（防止修过头）');
 ok('切到市场后高亮更新', () => {
   const n0 = tabWrites;
-  D.setView('market');
-  if (!D.tabHtml.includes('class="tab on" data-view="market"')) {
+  D.setView('make');   /* market 已搬去集团层（总账 Z4 进店行），底栏只剩 农田/制造 */
+  if (!D.tabHtml.includes('class="tab on" data-view="make"')) {
     throw new Error('高亮没跟到市场：' + D.tabHtml.slice(0, 120));
   }
   if (tabWrites <= n0) throw new Error('视图变了却没重写标签栏，高亮不可能更新');
@@ -140,7 +140,7 @@ ok('mousedown 后跨过一次重渲染，点击仍生效', () => {
   D.render();                                   // 模拟 mousedown 与 mouseup 之间发生的那次重建
   const container = { id: 'tabs', closest: () => null };   // 浏览器派发 click 的共同祖先
   D.onClick({ target: container, clientX: 424, clientY: 20 });
-  if (!D.tabHtml.includes('data-view="market"') || !D.tabHtml.includes('class="tab on" data-view="market"')) {
+  if (!D.tabHtml.includes('data-view="make"') || !D.tabHtml.includes('class="tab on" data-view="make"')) {
     throw new Error('点击被吞掉了，标签停在了农田：' + D.tabHtml.slice(0, 120));
   }
   if (VARIANT === 'new' && hitTestCalls === 0) {
@@ -150,8 +150,11 @@ ok('mousedown 后跨过一次重渲染，点击仍生效', () => {
 
 console.log('\nT4 正常点击路径不受影响');
 ok('target 直接是按钮时正常切换', () => {
-  D.onClick(D.ev({ view: 'bank' }));
-  if (!D.tabHtml.includes('class="tab on" data-view="bank"')) {
+  /* ⚠ 原来这里点的是 bank（钱庄）—— 钱庄已搬去集团层，底栏没有它的页签了。
+     改成 farm：T3 结束时停在各 make，再点 farm 才是**一次真的切换**
+     （点同一个页签证明不了“正常点击仍生效”）。 */
+  D.onClick(D.ev({ view: 'farm' }));
+  if (!D.tabHtml.includes('class="tab on" data-view="farm"')) {
     throw new Error('正常点击反而坏了：' + D.tabHtml.slice(0, 120));
   }
 });
