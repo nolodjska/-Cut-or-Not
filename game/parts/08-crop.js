@@ -78,7 +78,7 @@ Game.prototype._harvest = function (p, idx, silent) {
   if (!pl || !pl.crop || !pl.ready) return { ok: false, msg: '还没熟' };
   const c = this.s.crops[pl.crop];
   const cid = pl.crop;
-  let y = c.yld * p.mods.yieldMult * (pl.upgraded ? BAL.plotUpgradeMult : 1);
+  let y = c.yld * p.mods.yieldMult * (pl.upgraded ? BAL.plotUpgradeMult : 1) * this.plotUseYield(pl);
   const dis = c.activeYieldMult || 1;
   /* ⚠ 2026-10-08 审计拓出的硬 bug（原来是错的，两个方向都错）：
      原式：y *= (1 + (1 - dis) * (1 - p.mods.disasterMult))

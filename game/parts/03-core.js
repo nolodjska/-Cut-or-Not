@@ -183,7 +183,7 @@ Game.prototype._newPlayer = function (id, name, corpId, isHuman) {
   const corp = CORPS.find(c => c.id === corpId) || CORPS[0];
   const np = BAL.startPlots + corp.start.plots;
   const plots = [];
-  for (let i = 0; i < np; i++) plots.push({ crop: null, plantedT: null, matureT: null, auto: false, upgraded: false });
+  for (let i = 0; i < np; i++) plots.push({ crop: null, plantedT: null, matureT: null, auto: false, upgraded: false, use: 'grain', district: 'suburb' });
   const p = {
     id, name, corp: corp.id, corpName: corp.name, isHuman: !!isHuman,
     /* 持仓层（docs/13 §7）：玩家是金融巨鳄，可能持有多家公司。

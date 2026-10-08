@@ -128,6 +128,19 @@ const BAL = {
      给足一天是为了让“没人理”这个状态真的会发生 ——
      否则它只是因为玩家没看见就被判死，那是把“沉默”当成了“否决”。 */
   decisionHours: 24,
+  /* ---- 地皮（docs/19 §4.16）：使用 × 地段 ----
+     取值定在“**粮田 · 城郊** = plotExpandCost[idx] 本身”上，
+     所以**默认地块的价钱与加这条机制之前逐位一致** ——
+     加机制不许顺手改平衡（改平衡要单独一刀、单独一份守卫）。
+     ⚠ 只有“使用”会**改单产**（所以它是个真选择）；
+       “地段”目前只影响地价 —— 它的卖货效应还没实现，
+        所以在 UI 上暂时不暴露，免得让玩家花真钱做一个假选择。 */
+  landUseMult:      { grain: 1.0, cash: 1.25, facility: 1.6 },
+  landDistrictMult: { suburb: 1.0, town: 0.8, core: 1.45 },
+  landUseYield:     { grain: 1.0, cash: 1.15, facility: 0.75 },
+  landUses: ['grain', 'cash', 'facility'],
+  landUseName: { grain: '粮田', cash: '经济作物地', facility: '设施用地' },
+  landDistrictName: { suburb: '城郊', town: '镇上', core: '核心地段' },
 };
 
 /* 作物表：数值镜像 docs/06 §5 */

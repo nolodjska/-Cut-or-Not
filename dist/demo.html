@@ -1304,6 +1304,19 @@ const BAL = {
      给足一天是为了让“没人理”这个状态真的会发生 ——
      否则它只是因为玩家没看见就被判死，那是把“沉默”当成了“否决”。 */
   decisionHours: 24,
+  /* ---- 地皮（docs/19 §4.16）：使用 × 地段 ----
+     取值定在“**粮田 · 城郊** = plotExpandCost[idx] 本身”上，
+     所以**默认地块的价钱与加这条机制之前逐位一致** ——
+     加机制不许顺手改平衡（改平衡要单独一刀、单独一份守卫）。
+     ⚠ 只有“使用”会**改单产**（所以它是个真选择）；
+       “地段”目前只影响地价 —— 它的卖货效应还没实现，
+        所以在 UI 上暂时不暴露，免得让玩家花真钱做一个假选择。 */
+  landUseMult:      { grain: 1.0, cash: 1.25, facility: 1.6 },
+  landDistrictMult: { suburb: 1.0, town: 0.8, core: 1.45 },
+  landUseYield:     { grain: 1.0, cash: 1.15, facility: 0.75 },
+  landUses: ['grain', 'cash', 'facility'],
+  landUseName: { grain: '粮田', cash: '经济作物地', facility: '设施用地' },
+  landDistrictName: { suburb: '城郊', town: '镇上', core: '核心地段' },
 };
 
 /* 作物表：数值镜像 docs/06 §5 */
@@ -1656,7 +1669,7 @@ Game.prototype._newPlayer = function (id, name, corpId, isHuman) {
   const corp = CORPS.find(c => c.id === corpId) || CORPS[0];
   const np = BAL.startPlots + corp.start.plots;
   const plots = [];
-  for (let i = 0; i < np; i++) plots.push({ crop: null, plantedT: null, matureT: null, auto: false, upgraded: false });
+  for (let i = 0; i < np; i++) plots.push({ crop: null, plantedT: null, matureT: null, auto: false, upgraded: false, use: 'grain', district: 'suburb' });
   const p = {
     id, name, corp: corp.id, corpName: corp.name, isHuman: !!isHuman,
     /* 持仓层（docs/13 §7）：玩家是金融巨鳄，可能持有多家公司。
@@ -2880,7 +2893,7 @@ Game.prototype._harvest = function (p, idx, silent) {
   if (!pl || !pl.crop || !pl.ready) return { ok: false, msg: '还没熟' };
   const c = this.s.crops[pl.crop];
   const cid = pl.crop;
-  let y = c.yld * p.mods.yieldMult * (pl.upgraded ? BAL.plotUpgradeMult : 1);
+  let y = c.yld * p.mods.yieldMult * (pl.upgraded ? BAL.plotUpgradeMult : 1) * this.plotUseYield(pl);
   const dis = c.activeYieldMult || 1;
   /* ⚠ 2026-10-08 审计拓出的硬 bug（原来是错的，两个方向都错）：
      原式：y *= (1 + (1 - dis) * (1 - p.mods.disasterMult))
@@ -3109,16 +3122,40 @@ Game.prototype._a_cancelOrder = function (p, d) {
   return { ok: true, msg: '挂单已撤，冻结资金退回' };
 };
 
-Game.prototype._a_expand = function (p) {
-  if (p.plots.length >= BAL.maxPlots) return { ok: false, msg: '已经是上限 ' + BAL.maxPlots + ' 块地了' };
-  const n = p.plots.length - BAL.startPlots;            // 0 表示扩第 5 块
+/* 地价（docs/19 §4.16）：使用 × 地段。
+   锚点 = “粮田 · 城郊” = plotExpandCost[idx] 本身 ⇒
+   默认地块的价钱与加这条机制之前**逐位一致**。
+   ⚠ 单独立成一个函数，是因为 §4.16 要求市场面板与记账读**同一个价** ——
+     两处各算一遍必然对不上（本项目在别处踩过“面板价 vs 成交价”不一致）。 */
+Game.prototype.landPrice = function (p, d) {
+  const n = (p && p.plots ? p.plots.length : BAL.startPlots) - BAL.startPlots;
   const idx = clamp(n, 0, BAL.plotExpandCost.length - 1);
-  const cost = BAL.plotExpandCost[idx] * (this.s.rules.doubleLandRent ? 1.3 : 1);
-  if (p.cash < cost) return { ok: false, msg: '扩地要 ' + money(cost) + ' G' };
+  const use = (d && d.use) || 'grain';
+  const district = (d && d.district) || 'suburb';
+  const um = BAL.landUseMult[use] == null ? 1 : BAL.landUseMult[use];
+  const dm = BAL.landDistrictMult[district] == null ? 1 : BAL.landDistrictMult[district];
+  return Math.round(BAL.plotExpandCost[idx] * um * dm * (this.s.rules.doubleLandRent ? 1.3 : 1));
+};
+/* “使用”对单产的影响（docs/19 §4.16）。粮田 = 1.0 ⇒ 默认地块算出来与以前完全一样。
+   旧存档的地块没有 use 字段 ⇒ 这是 undefined ⇒ 走默认 1.0（不会被改单产）。 */
+Game.prototype.plotUseYield = function (pl) {
+  if (!pl) return 1;
+  const v = BAL.landUseYield[pl.use];
+  return v == null ? 1 : v;
+};
+
+Game.prototype._a_expand = function (p, d) {
+  if (p.plots.length >= BAL.maxPlots) return { ok: false, msg: '已经是上限 ' + BAL.maxPlots + ' 块地了' };
+  const use = (d && d.use) || 'grain';
+  const district = (d && d.district) || 'suburb';
+  const cost = this.landPrice(p, { use, district });
+  if (p.cash < cost) return { ok: false, msg: '这块地要 ' + money(cost) + ' G' };
   p.cash -= cost;
-  p.plots.push({ crop: null, plantedT: null, matureT: null, auto: false, upgraded: false });
-  this._log('money', p.name + ' 扩了一块地（第 ' + p.plots.length + ' 块，花了 ' + money(cost) + ' G）', p.id);
-  return { ok: true, msg: '扩地成功，现在有 ' + p.plots.length + ' 块地' };
+  p.plots.push({ crop: null, plantedT: null, matureT: null, auto: false, upgraded: false, use, district });
+  const nm = (BAL.landUseName[use] || '地');
+  /* 文案说“现象与价钱”，不说“使用/地段/溢价率”这类表格语言。 */
+  this._log('money', p.name + ' 买下一块' + nm + '（第 ' + p.plots.length + ' 块，花了 ' + money(cost) + ' G）', p.id);
+  return { ok: true, msg: '买下一块' + nm + '（第 ' + p.plots.length + ' 块），现在有 ' + p.plots.length + ' 块地' };
 };
 
 Game.prototype._a_upgradePlot = function (p, d) {
@@ -5205,6 +5242,26 @@ function inputSection() {
   return `<div class="dl dim" style="margin:2px 0 6px">🧺 种子·农资 —— 买来是为了用，不能倒手卖</div>${rows}`;
 }
 
+/* §4.16 地皮 —— 四种“使用”里只暴露**三种**，因为只有它们有真差别：
+     · 粮田：便宜、单产基准（= 原来的地）
+     · 经济作物地：贵一些、单产更高
+     · 设施用地：最贵、单产更低，但适合放自动化（放置化）
+   ⚠ **地段暂不上**：它目前只影响地价、不影响任何玩法，
+     放上来就是让玩家花真钱做一个假选择 —— 宁可少一个按钮。
+   ⚠ 价钱读的是 G.landPrice，与记账/引擎**同一个函数**（不许两处各算一遍）。 */
+function landSection() {
+  const rows = (GG.BAL.landUses || []).map(use => {
+    const cost = G.landPrice(HUMAN, { use });
+    const nm = (GG.BAL.landUseName || {})[use] || use;
+    const yld = (GG.BAL.landUseYield || {})[use];
+    const tag = yld == null ? '' : (yld >= 1 ? ' · 收成 ×' + yld : ' · 收成 ×' + yld);
+    return `<button class="chip${HUMAN.cash >= cost ? '' : ' off'}" data-act="expand" data-use="${use}">` +
+      `${esc(nm)} ${fmt(cost)}${tag}</button>`;
+  }).join('');
+  return `<div class="dl dim" style="margin:2px 0 6px">🏞 地皮 —— 不同的地用不同的价，收成也不一样</div>` +
+    `<div class="chips" style="flex-wrap:wrap">${rows}</div>`;
+}
+
 function viewMarket() {
   const s = G.s;
   /* 加工品只在"你已经接触过"之后才出现，避免开局就丢 6 张卡给新手 */
@@ -5213,7 +5270,7 @@ function viewMarket() {
     return (HUMAN.storage[id] || 0) > 0 || HUMAN.craftJobs.some(j => j.pid === id) || HUMAN.workshops > 0;
   });
 
-  return inputSection() + buyerPanel() + goods.map(cid => {
+  return inputSection() + landSection() + buyerPanel() + goods.map(cid => {
     const c = G.good(cid);
     const isProd = G.isProduct(cid);
     const chg = (c.price / c.base - 1) * 100;
@@ -6206,7 +6263,7 @@ if (d.root) {
 
   if (d.act === 'plantAll') { A('plantAll', { crop: ui.pick }); return; }
   if (d.act === 'harvestAll') { A('harvestAll'); return; }
-  if (d.act === 'expand') { A('expand'); return; }
+  if (d.act === 'expand') { A('expand', { use: d.use, district: d.district }); return; }
   if (d.act === 'upgradeStorage') { A('upgradeStorage'); return; }
   /* ⚠ 2026-10-08 玩家实测「工坊修不了，没法买」的**根因**：
      viewMake() 一直在渲染「再建一间作坊」这颗按钮，

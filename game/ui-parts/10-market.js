@@ -166,6 +166,26 @@ function inputSection() {
   return `<div class="dl dim" style="margin:2px 0 6px">🧺 种子·农资 —— 买来是为了用，不能倒手卖</div>${rows}`;
 }
 
+/* §4.16 地皮 —— 四种“使用”里只暴露**三种**，因为只有它们有真差别：
+     · 粮田：便宜、单产基准（= 原来的地）
+     · 经济作物地：贵一些、单产更高
+     · 设施用地：最贵、单产更低，但适合放自动化（放置化）
+   ⚠ **地段暂不上**：它目前只影响地价、不影响任何玩法，
+     放上来就是让玩家花真钱做一个假选择 —— 宁可少一个按钮。
+   ⚠ 价钱读的是 G.landPrice，与记账/引擎**同一个函数**（不许两处各算一遍）。 */
+function landSection() {
+  const rows = (GG.BAL.landUses || []).map(use => {
+    const cost = G.landPrice(HUMAN, { use });
+    const nm = (GG.BAL.landUseName || {})[use] || use;
+    const yld = (GG.BAL.landUseYield || {})[use];
+    const tag = yld == null ? '' : (yld >= 1 ? ' · 收成 ×' + yld : ' · 收成 ×' + yld);
+    return `<button class="chip${HUMAN.cash >= cost ? '' : ' off'}" data-act="expand" data-use="${use}">` +
+      `${esc(nm)} ${fmt(cost)}${tag}</button>`;
+  }).join('');
+  return `<div class="dl dim" style="margin:2px 0 6px">🏞 地皮 —— 不同的地用不同的价，收成也不一样</div>` +
+    `<div class="chips" style="flex-wrap:wrap">${rows}</div>`;
+}
+
 function viewMarket() {
   const s = G.s;
   /* 加工品只在"你已经接触过"之后才出现，避免开局就丢 6 张卡给新手 */
@@ -174,7 +194,7 @@ function viewMarket() {
     return (HUMAN.storage[id] || 0) > 0 || HUMAN.craftJobs.some(j => j.pid === id) || HUMAN.workshops > 0;
   });
 
-  return inputSection() + buyerPanel() + goods.map(cid => {
+  return inputSection() + landSection() + buyerPanel() + goods.map(cid => {
     const c = G.good(cid);
     const isProd = G.isProduct(cid);
     const chg = (c.price / c.base - 1) * 100;

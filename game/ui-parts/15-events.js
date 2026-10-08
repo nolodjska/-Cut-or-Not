@@ -91,7 +91,7 @@ if (d.root) {
 
   if (d.act === 'plantAll') { A('plantAll', { crop: ui.pick }); return; }
   if (d.act === 'harvestAll') { A('harvestAll'); return; }
-  if (d.act === 'expand') { A('expand'); return; }
+  if (d.act === 'expand') { A('expand', { use: d.use, district: d.district }); return; }
   if (d.act === 'upgradeStorage') { A('upgradeStorage'); return; }
   /* ⚠ 2026-10-08 玩家实测「工坊修不了，没法买」的**根因**：
      viewMake() 一直在渲染「再建一间作坊」这颗按钮，
