@@ -38,9 +38,19 @@ for (const [name, cmd, pick] of STEPS) {
   const out = (r.stdout || '') + (r.stderr || '');
   const line = out.split(/\r?\n/).map(s => s.trim()).filter(s => s && pick.test(s)).pop()
     || out.split(/\r?\n/).map(s => s.trim()).filter(Boolean).pop() || '(无输出)';
-  const ok = r.status === 0;
+  /* ⚠ 通过判据**不能只看退出码**（原来就是，于是埋了个很坏的坑）：
+     只要子工具把失败写在结论行里、却仍然 process.exit(0)，"全绿"的假象就成立了。
+     2026-10-08 我就撞上过：sim.cjs 明明打「不变量异常：❌ 48 条」（48/660 局崩在
+     一个 undefined 上），check-all 却给了 15 项全绿 —— 一个不会变红的守卫
+     比没有守卫更危险，它会把"48 局崩溃"包装成"已通过"。
+     所以：结论行本身也是判据。用 ❌ 这个字形（全套工具抛结论时都用它），
+     不另写词表 —— 词表会漏，而且 "✅ 全部通过（失败 0 项）" 这种句子会被误伤。 */
+  const bad = line.indexOf('❌') >= 0;
+  const ok = r.status === 0 && !bad;
   if (!ok) failed++;
-  console.log((ok ? '  ✅ ' : '  ❌ ') + name + '  ' + line);
+  /* 把"是退出码拦下的"还是"结论行拦下的"分开写：否则下次又分不清是谁报的错。 */
+  const why = ok ? '' : (r.status !== 0 ? '（退出码 ' + r.status + '）' : '（结论行报错）');
+  console.log((ok ? '  ✅ ' : '  ❌ ') + name + '  ' + line + why);
 }
 console.log(failed ? '\n❌ 全量检查失败：' + failed + ' 项' : '\n✅ 全量检查全部通过');
 process.exit(failed ? 1 : 0);

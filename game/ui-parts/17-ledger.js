@@ -89,20 +89,16 @@ function ledgerBook() {
 }
 
 function viewLedger() {
-  const sheet = G.consolidated(HUMAN);
   const book = ledgerBook();
   const belt = ledgerBelt();
   const held = book.filter(r => !r.mine).length;
 
   return '<div class="ledger">' +
-    /* Z0 身价：本屏唯一的大字（顶栏那个数仍归公司层，本批不动它 —— 见 docs/20 §0 待办） */
-    '<div class="worth">' +
-      '<div class="wlab">身价</div>' +
-      '<div class="wnum">' + fmt(sheet.nav) + '<small>G</small></div>' +
-      '<div class="wsub">手上的现金 ' + fmt(HUMAN.cash + (HUMAN.deposit || 0)) + ' G' +
-        ' · 欠着 ' + fmt(sheet.debt) + ' G' +
-        ' · 还能借 ' + fmt(G.creditLimit(HUMAN)) + ' G</div>' +
-    '</div>' +
+    /* Z0 身价**不在这里画**：docs/20 §2.1 的 Z0 就是「顶栏」本身
+       （身价印章超大字 · 现金 · 授信 · 日子），不是正文里的一张卡。
+       我第一版把它当正文卡片画，结果同一个数在一屏里挂了三个标签
+       （顶栏大字 / 身价卡 / 公司卡家底）—— 正是 §0「三个钱数永不同屏并列」要防的事。
+       现在顶栏那个大字已经改成身价（08-chrome），本屏从 Z1 告急带开始。 */
 
     /* Z1 告急带：有内容才显（空数组 = 整条不占屏）。已是一段现成 HTML，直出。 */
     (belt.length ? '<div class="belt">' + belt.join('') + '</div>' : '') +

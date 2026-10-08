@@ -1,6 +1,6 @@
 /* ===== part: 08-chrome.js ===== */
 function renderTop() {
-  const s = G.s, nav = G.nav(HUMAN);
+  const s = G.s;
   /* 顶栏永远是“我”（集团），底栏永远是“这家公司”（docs/20 §2.3）。
      · 一级（总账）：crumb 显示 🏠 总账，**不出现公司名**；
      · 二级（公司工作台）：crumb 变成「← 集团」，回根入口恒在左上角，
@@ -22,7 +22,12 @@ function renderTop() {
       : '<b class="crumb on">🏠 总账</b>');
   $('#clock').innerHTML = crumb + '第 <b>' + dayOf(s.t) + '</b> 天 <b>' + hhmm(s.t) + '</b>' +
     (ui.root ? '' : ' · ' + esc(HUMAN.corpName)) + mailSeal();
-  $('#navbig').innerHTML = fmt(nav) + '<small>G</small>';
+  /* ⚠ 顶栏最大字必须是【身价】（集团层并表），不是单一公司的净资产
+     （docs/20 §0 三个钱数永不同屏并列 / §2.1 的 Z0 定就是身价）。
+     单人公司时两个数相等，所以这个错一直看不见；一旦手里有第二家公司
+     （参股 / 控股），顶栏就会开始说谎 —— 而它是玩家判断“我值多少”的唯一大字。
+     ⚠ 必须与 index.html 的 #navlab 文案同步（那里原本写的是「净资产」）。 */
+  $('#navbig').innerHTML = fmt(G.consolidated(HUMAN).nav) + '<small>G</small>';
   const invV = G.inventoryValue(HUMAN), debt = HUMAN.debt + G.shortLiability(HUMAN);
   /* 四个指标压进一行：净资产在左（大字号），现金/库存/欠款在右。
      改造前 #navmeta 用 <br> 排成两行、净资产再独占一行，#top 一共 145px（占手机 17% 屏高）。

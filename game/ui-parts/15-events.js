@@ -46,6 +46,14 @@ function handleAction(e) {
   /* 信匣：打开一封 / 返回列表。已读写进引擎状态，空态则回列表（见 18-mail.js）。 */
   if (d.mail) { mailOpenBy(+d.mail); return; }
   if (d.mailback) { mailClose(); return; }
+  /* 答复信里的提案（合作请求 / 收购通知）。
+     走引擎动作 _a_acceptOffer / _a_declineOffer —— 钱货结算、流水、存档全在引擎
+     那一侧完成，UI 只管把“谁答复了哪一条、接不接受”送进去。 */
+  if (d.offer) {
+    const [k, oid] = d.offer.split(':');
+    A(k === 'accept' ? 'acceptOffer' : 'declineOffer', { id: +oid });
+    render(true); return;
+  }
   /* data-root：一级屏切换（docs/20 §3）。值 = 去哪张一级屏：
        'ledger'（默认，合并老存档里的 "1"） / 'mail'（顶栏信匣章）。
      ⚠ ui.root 因此从布尔变成**模式串**：布尔存不下“我有两张一级屏”，

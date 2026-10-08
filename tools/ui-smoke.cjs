@@ -406,12 +406,15 @@ console.log('\n2.11) 一级根屏「总账」（docs/20 §7 第一批第 1 项�
    总账的入口是顶栏那颗 data-root 键，而它极易被 15-events 里
    `if (d.corp || d.pace) return;` 提前吞掉（导航键用 data-corp 就是死按钮）。
    所以这里往返一次：进总账 → 回公司层，并把 NaN/undefined 一并扫掉。 */
-ok('顶栏 🏠 能进总账，总账里出身价与公司卡', () => {
+ok('顶栏 🏠 能进总账，总账里出公司卡', () => {
   D.start('grow', 'GG-UILEDGER', 8);
   click({ root: '1' });
   D.render();
   const h = D.viewHtml;
-  if (!h.includes('身价')) throw new Error('总账里没有身价：' + h.slice(0, 90));
+  /* ⚠ 哨兵从「身价」改成「手里的公司」：
+     身价已经搬回顶栏（docs/20 §2.1 的 Z0 就是顶栏本身），而顶栏不在 #view 里，
+     无头测不到。真正的总账正文标志是「手里的公司」这条表头。 */
+  if (!h.includes('手里的公司')) throw new Error('总账里没有公司卡列表：' + h.slice(0, 90));
   if (!h.includes('进入经营')) throw new Error('公司卡上没有进经营入口：' + h.slice(0, 90));
   if (h.includes('NaN')) throw new Error('总账里出现 NaN');
   if (h.includes('undefined')) throw new Error('总账里出现 undefined');
@@ -419,7 +422,7 @@ ok('顶栏 🏠 能进总账，总账里出身价与公司卡', () => {
 ok('总账里点【进入经营】能回到公司工作台', () => {
   click({ enter: 'grow' });
   D.render();
-  if (D.viewHtml.includes('身价')) throw new Error('点了进经营却没离开总账');
+  if (D.viewHtml.includes('手里的公司')) throw new Error('点了进经营却没离开总账');
   if (!D.viewHtml.includes('农田') && !D.viewHtml.includes('播种')) {
     throw new Error('回到的不是公司工作台：' + D.viewHtml.slice(0, 90));
   }
@@ -437,7 +440,7 @@ ok('★ 总账的告急带按钮真的能换屏（R1 回归锁）', () => {
   D.start('grow', 'GG-UIBELT', 8);
   click({ root: '1' });
   D.render();
-  if (!D.viewHtml.includes('身价')) throw new Error('没进总账');
+  if (!D.viewHtml.includes('手里的公司')) throw new Error('没进总账');
   D.human.cash = -1;
   D.render();
   if (!D.viewHtml.includes('钱庄随时上门')) {
@@ -445,7 +448,7 @@ ok('★ 总账的告急带按钮真的能换屏（R1 回归锁）', () => {
   }
   click({ view: 'bank' });
   D.render();
-  if (D.viewHtml.includes('身价')) throw new Error('点了告急带却没离开总账（R1 复发）');
+  if (D.viewHtml.includes('手里的公司')) throw new Error('点了告急带却没离开总账（R1 复发）');
 });
 
 console.log('\n2.12) 一级屏「信匣｜邮箱」（docs/20 §7 第一批第 2 项）');
@@ -462,7 +465,7 @@ ok('顶栏信匣章能进信匣，没信时是空态', () => {
      不可点的 <b>🏠 总账</b>，除了刷新页面根本出不去。 */
   click({ root: 'ledger' });
   D.render();
-  if (!D.viewHtml.includes('身价')) throw new Error('从信匣回不到总账（死胡同）');
+  if (!D.viewHtml.includes('手里的公司')) throw new Error('从信匣回不到总账（死胡同）');
   /* ⚠ 收尾：ui.root 是**全局 UI 状态**，会跨测试泄漏。
      我第一版就漏了这步 → 后面的 2.9（六公司×七视图查 NaN）在“农场页”上
      找不到扩地按钮，直接报「测试前提不成立」而变红。
@@ -496,6 +499,58 @@ ok('有信时列表出来、点开即已读、能返回', () => {
   D.render();
   if (!D.viewHtml.includes('信匣')) throw new Error('返回后没回到信匣');
   click({ enter: 'grow' });   /* 同上：还原成二级，别把 ui.root='mail' 漏给后面的测试 */
+});
+
+/* ⚠ 这一条测的是“别的公司来找你谈事”整条链路：提案 → 信 → 答复 → 钱货真的动。
+   为什么不能用改随机数的办法造提案：提案走**独立随机流**（hash32(seed,'offers')），
+   就是为了不让其它系统被动摇。所以这里用确定性的**推进时段**让它自然发生。 */
+ok('★ 别的公司来信：能答复，且答了钱货真的会动（合作请求 / 收购通知）', () => {
+  D.start('grow', 'GG-UIMAIL', 8);
+  const g = D.G;
+  let o = null;
+  for (let slot = 1; slot <= 12 && !o; slot++) {
+    g.s.t = slot * 8 * 60 + 1;          /* 直接推时间（只测提案通道，不测钟） */
+    g._offerTick();
+    o = (g.s.offers || []).find(x => x.status === 'open');
+  }
+  if (!o) throw new Error('推进 12 个时段，引擎一份提案都没发出');
+  const m = (g.s.inbox || []).find(x => x.i === o.mailId);
+  if (!m) throw new Error('提案没有对应的信（信与提案断了）');
+
+  /* 列表里能看见，点开后能看到答复按钮 */
+  click({ root: 'mail' });
+  D.render();
+  click({ mail: String(m.i) });
+  D.render();
+  const yes = 'accept:' + o.i;
+  if (!D.viewHtml.includes('data-offer="' + yes + '"')) {
+    throw new Error('信件详情里没有答复按钮：' + D.viewHtml.slice(0, 200));
+  }
+
+  /* 真答复 → 钱货必须真的动 */
+  const before = D.human.cash;
+  click({ offer: yes });
+  D.render();
+  if (o.status !== 'accepted') throw new Error('答复后提案状态不是已接受：' + o.status);
+  if (o.kind === 'loan') {
+    if ((D.human.loansOut || []).length !== 1) throw new Error('答应了借他钱，账上却没记一笔放贷');
+    if (Math.abs((before - D.human.cash) - o.amount) > 1) throw new Error('借钱后现金没有按数扣掉');
+  } else {
+    if ((D.human.storage[o.crop] || 0) !== 0) throw new Error('答应了卖货，货却还在仓库里');
+    if (D.human.cash <= before) throw new Error('卖货后现金没增加');
+  }
+
+  /* 同一件事不能成交两次 */
+  const after = D.human.cash;
+  click({ offer: yes });
+  D.render();
+  if (D.human.cash !== after) throw new Error('重复答复又动了一次钱（可以刷）');
+  if (!D.viewHtml.includes('data-offer="' + yes + '"')) {
+    /* 已答复后按钮应当消失，改成一句结果 */
+  } else {
+    throw new Error('已答复的提案还留着可点的按钮（假按钮）');
+  }
+  click({ enter: 'grow' });   /* 还原成二级，别把状态漏给后面的测试 */
 });
 
 console.log('\n2.9) 回归：界面上不许出现 NaN（2026-10-08 真机肉眼发现「扩一块地 (NaNG)」）');

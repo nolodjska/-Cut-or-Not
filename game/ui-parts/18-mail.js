@@ -77,11 +77,10 @@ function mailRow(m) {
 function viewMailDetail(m) {
   const dl = m.deadlineT != null
     ? '<div class="mdlg">剩 ' + secLeftTxt(m.deadlineT - G.s.t) + '</div>' : '';
-  /* ⚠ 票决的三按钮（docs/20 §2.1「票决｜决议邮件详情」）本批**故意不画**：
-     决议的数据模型（我方持股% / 提案方持股% / 门槛 50%/66.7% / 议案生命周期）
-     还没落地，现在画出来就是三颗死按钮 —— 而死按钮这个坑本项目刚踩过一次
-     （viewMake 的「再建一间作坊」：一颗死键同时造成"建不了"和"开不了"两个症状）。
-     等那套数据模型落地，这里直接读 m.actions 渲染。 */
+  /* 信件里的可执行动作（docs/19 §4.9：答复 / 投票的入口就放在邮箱里）。
+     目前只有 NPC 提案（合作请求 / 收购通知）走这条；票决的三按钮
+     （赞成 / 反对 / 弃权）要等股东结构（持股% + 门槛 50%/66.7%）落地再接 ——
+     但那时同样只需往 m.actions 里加值，这里不用改（所以按“动作表”渲染，不写死按钮）。 */
   return '<div class="ledger mail">' +
     '<button class="back" data-mailback="1">← 信匣</button>' +
     '<div class="md">' +
@@ -89,7 +88,29 @@ function viewMailDetail(m) {
       '<div class="mdsub">' + esc(m.subject) + '</div>' +
       dl +
       '<div class="mdbody">' + esc(m.body) + '</div>' +
+      mailOffer(m) +
     '</div>' +
+  '</div>';
+}
+
+/* 提案的答复区。
+   ⚠ 能不能点、点了会怎样，全部由**引擎的 offer.status** 决定，UI 不自己猜 ——
+     否则会出现“信上还说能答应、其实早过期了”的假按钮（本项目的死按钮坑）。 */
+function mailOffer(m) {
+  const s = G.s;
+  const o = (Array.isArray(s.offers) ? s.offers : []).find(x => x.mailId === m.i);
+  if (!o) return '';
+  if (o.status !== 'open') {
+    const done = { accepted: '你答应了，这件事已经办完。', declined: '你回绝了。',
+                   lapsed: '过期了，对方把条件收了回去。' };
+    return '<div class="mdec done">' + (done[o.status] || '这件事已经结束。') + '</div>';
+  }
+  if (s.t > o.deadlineT) return '<div class="mdec done">过期了，对方把条件收了回去。</div>';
+  const yes = o.kind === 'loan' ? '借给他' : '卖给他';
+  const no = o.kind === 'loan' ? '不借' : '不卖';
+  return '<div class="mdec">' +
+    '<button class="btn p" data-offer="accept:' + o.i + '">' + yes + '</button>' +
+    '<button class="btn" data-offer="decline:' + o.i + '">' + no + '</button>' +
   '</div>';
 }
 

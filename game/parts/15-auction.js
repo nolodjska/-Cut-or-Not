@@ -309,10 +309,148 @@ Game.prototype._mailTick = function () {
   }
 };
 
+/* ---- 3.9c NPC 提案（docs/19 §4.9：合作请求 / 收购通知 由对方主动发起，投进信匣）----------
+   ⚠ 为什么用**独立随机流**（hash32(seed,'offers')）：一旦借用 this.rng.npc / main，
+     就会挪动其它系统共用的随机序列 —— 660 局仿真的结果会整体变样。
+     那不是“改对了”，是“换了个游戏”，而且 15 项守卫里没一项能告诉你“仿真变了是因为谁”。
+   ⚠ 提案本身**不改任何状态**，只在答复时结算（见 _decideOffer）。
+     否则仿真里会凭空多出钱货，而人一次点击就能把不变量撞坏。
+   ⚠ 提案只发给玩家（humanId）：NPC 之间不走信匣。 */
+Game.prototype._offerRng = function () {
+  /* 懒建 + 不进存档：它只由 seed 决定，读档后重建即得同一条流。 */
+  if (!this._offRng) this._offRng = new Rng(hash32(this.s.seed, 'offers'));
+  return this._offRng;
+};
+
+Game.prototype._offerTick = function () {
+  const s = this.s;
+  if (!s || !Array.isArray(s.players)) return;
+  if (!Array.isArray(s.offers)) s.offers = [];
+  if (!Array.isArray(s.inbox)) s.inbox = [];
+  if (typeof s.offersSeq !== 'number') s.offersSeq = 0;
+  if (typeof s.offerSlot !== 'number') s.offerSlot = 0;
+  const me = s.players.find(p => p.id === s.humanId);
+  if (!me || !me.alive) return;
+
+  /* 过期：提案有寿命。超时不是“没发生”，而是“对方把这个条件收回了”。 */
+  for (const o of s.offers) if (o.status === 'open' && s.t > o.deadlineT) o.status = 'lapsed';
+
+  /* 前 6 个游戏小时是新手引导期，不打扰；之后每满 8 小时看一眼有没有人来谈事。 */
+  if (s.t < 6 * 60) return;
+  const slot = Math.floor(s.t / (8 * 60));
+  if (slot <= s.offerSlot) return;
+  s.offerSlot = slot;
+
+  if (s.offers.filter(o => o.status === 'open').length >= 2) return;   /* 最多两件事等你答复 */
+  const r = this._offerRng();
+  if (!r.chance(0.55)) return;
+  const others = s.players.filter(p => p.id !== s.humanId && p.alive);
+  if (!others.length) return;
+  const npc = others[Math.min(others.length - 1, Math.floor(r.next() * others.length))];
+
+  /* 两选一：他要借你的钱 / 他要按溢价收你仓库里的货。只挑真做得成的那个。 */
+  const lendable = Math.round(me.cash * 0.3 / 100) * 100;
+  const canLoan = lendable >= 800;
+  /* ⚠ 仓库（storage）里不只放作物，还放**加工品** —— 是同一个筐。
+     所以这里必须按“它在 s.crops 或 s.products 里有没有价”来筛。
+     我第一版只筛了“数量 > 0”，于是制造线一进到这里就崩：
+       s.crops['萝卜干'].price → Cannot read properties of undefined
+     660 局仿真里正是这样报出 48 条异常的（其余策略 0 条 —— 它们的仓库里只有作物）。 */
+  const held = Object.keys(me.storage || {}).filter(k =>
+    (s.crops[k] || s.products[k]) && Math.floor(me.storage[k] || 0) > 0);
+  const canBuy = held.length > 0;
+  if (!canLoan && !canBuy) return;
+  const kind = (canLoan && canBuy) ? (r.chance(0.5) ? 'loan' : 'buy') : (canLoan ? 'loan' : 'buy');
+
+  const deadlineT = s.t + 1440;                    /* 一天内答复 */
+  const o = {
+    i: ++s.offersSeq, t: Math.round(s.t), from: npc.id, fromName: npc.name,
+    kind, status: 'open', deadlineT, mailId: null,
+  };
+  let subject, body;
+  if (kind === 'loan') {
+    o.amount = clamp(lendable, 800, 8000);
+    o.rateDay = round2(BAL.loanRateDay * (1.6 + r.range(0, 0.9)));
+    o.dueT = s.t + 2 * 1440;
+    subject = npc.name + ' 想借 ' + money(o.amount) + ' G';
+    body = npc.name + ' 手头周转不开，想跟你借 ' + money(o.amount) + ' G，' +
+      '按每天 ' + (o.rateDay * 100).toFixed(1) + '% 计息，两天内还本付息。\n' +
+      '你答应的话，钱当场从你账上划走；到期他不还，这笔就烂在你手里。';
+  } else {
+    const cid = held[Math.min(held.length - 1, Math.floor(r.next() * held.length))];
+    const c = s.crops[cid] || s.products[cid];
+    o.crop = cid;
+    o.qty = Math.floor(me.storage[cid] || 0);
+    o.mult = round2(1.12 + r.range(0, 0.23));      /* 溢价 12% ~ 35% */
+    o.price = round2(c.price * o.mult);
+    subject = npc.name + ' 出价要你手里的 ' + c.name;
+    body = npc.name + ' 想一次把你手上的 ' + c.name + ' 全买走（' + o.qty + ' 单位），' +
+      '开价 ' + o.price + ' G/单位，比眼下市价高 ' + Math.round((o.mult - 1) * 100) + '%。\n' +
+      '这是场外交易，价格不会因此被压下去。答应就当场交割。';
+  }
+  o.mailId = this._mail(me.id, kind === 'loan' ? 'coop' : 'buyout', npc.name, subject, body,
+    { deadlineT, actions: ['accept', 'decline'] }).i;
+  s.offers.push(o);
+};
+
+/* 答复一份提案。**只有这里会改变状态**（提案本身只读，见 _offerTick 的注释）。
+   p = 答复的人（目前只有玩家会走到这）。accept = 接受 / 拒绝。 */
+Game.prototype._decideOffer = function (p, id, accept) {
+  const s = this.s;
+  if (!Array.isArray(s.offers)) s.offers = [];
+  const o = s.offers.find(x => x.i === id);
+  if (!o) return { ok: false, msg: '这封信已经不在了' };
+  if (o.status !== 'open') return { ok: false, msg: '这件事你已经答复过了' };
+  if (s.t > o.deadlineT) { o.status = 'lapsed'; return { ok: false, msg: '答复时间已经过了' }; }
+  const npc = s.players.find(x => x.id === o.from);
+  if (!accept) {
+    o.status = 'declined';
+    return { ok: true, msg: '已回绝。' };
+  }
+  if (o.kind === 'loan') {
+    if (p.cash < o.amount) return { ok: false, msg: '你手上的现金不够借给他' };
+    p.cash -= o.amount;
+    /* 字段形状与 13-talent.js:131 的放贷一致，到期由 04-ticks 的到期钩子收本息 / 认坏账。 */
+    p.loansOut.push({ toPid: o.from, principal: o.amount, rateDay: o.rateDay, dueT: o.dueT });
+    if (npc) npc.cash += o.amount;
+    o.status = 'accepted';
+    this._log('money', p.name + ' 借给 ' + (npc ? npc.name : '某人') + ' ' + money(o.amount) +
+      ' G（每天 ' + (o.rateDay * 100).toFixed(1) + '% 计息）', p.id);
+    return { ok: true, msg: '钱已经划给他了，到期自动收本息。' };
+  }
+  /* buy：场外交割。不动盘面（这正是对方能给溢价的理由）。 */
+  const have = Math.floor(p.storage[o.crop] || 0);
+  const qty = Math.min(o.qty, have);
+  if (qty <= 0) {
+    o.status = 'lapsed';
+    return { ok: false, msg: '你手上已经没有这种货了' };
+  }
+  const gross = qty * o.price;
+  const book = p.avgCost[o.crop] || { q: 0, c: 0 };
+  const profit = gross - qty * book.c;        /* 成本口径与 06-trade.js:106 的成交一致 */
+  p.storage[o.crop] = have - qty;
+  if (p.avgCost[o.crop]) p.avgCost[o.crop].q = Math.max(0, book.q - qty);
+  p.cash += gross;
+  p.realized += profit;
+  p.m.realized += profit;
+  if (npc) npc.cash -= gross;
+  o.status = 'accepted';
+  const gname = (s.crops[o.crop] || s.products[o.crop] || {}).name || o.crop;
+  this._log('trade', p.name + ' 把手上的 ' + gname + ' 一次卖给 ' +
+    (npc ? npc.name : '某人') + '（' + qty + ' 单位 @' + o.price + '）', p.id);
+  return { ok: true, msg: '已交割，钱到账。' };
+};
+
+/* 动作入口：Game.prototype.act 是按 `_a_` + name 反射查找的，
+   所以新增动作只需加方法，**不用去改任何分派表**（也就不会踩到别人正在改的那段）。 */
+Game.prototype._a_acceptOffer = function (p, d) { return this._decideOffer(p, +d.id, true); };
+Game.prototype._a_declineOffer = function (p, d) { return this._decideOffer(p, +d.id, false); };
+
 Game.prototype._flush = function () {
-  /* 派生式信件的唯一入口。放在 listeners 之前：这样订阅者（UI）拿到的 s
-     已经包含本帧新到的信，不会出现“预览图有信、信匣里没有”的错位。 */
+  /* 派生式信件与 NPC 提案的唯一入口。放在 listeners 之前：这样订阅者（UI）拿到的 s
+     已经包含本帧新到的东西，不会出现“预览图有信、信匣里没有”的错位。 */
   this._mailTick();
+  this._offerTick();
   for (const fn of this.listeners) fn(this.s);
 };
 

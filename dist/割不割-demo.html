@@ -1069,6 +1069,10 @@ body{
 .mdsub{margin-top:6px;font-size:15px;font-weight:700}
 .mdlg{margin-top:6px;font-size:11.5px;font-weight:700;color:#b3261e}
 .mdbody{margin-top:9px;font-size:13px;line-height:1.85;white-space:pre-wrap;opacity:.85}
+/* 信里的答复区（合作请求 / 收购通知 的 接受 与 拒绝） */
+.mdec{display:flex;gap:8px;margin-top:12px}
+.mdec .btn{flex:1 1 0}
+.mdec.done{margin-top:12px;padding:8px 10px;border-radius:8px;background:rgba(0,0,0,.05);font-size:12px;opacity:.7}
 .firm .ft{display:flex;align-items:center;gap:6px;font-size:14px;font-weight:700}
 /* 家底那行是本栏最后一行，只留上边距（原来还带 7px 下边距，是按钮另起一行时的旧间距） */
 .firm .fl{display:flex;align-items:center;gap:6px;margin-top:5px;font-size:11.5px;opacity:.75}
@@ -1109,7 +1113,12 @@ body{
     <div class="row between" id="toprow2">
       <div id="navwrap">
         <div id="navbig">10,000<small>G</small></div>
-        <div id="navlab">净资产</div>
+        <!-- ⚠ 这个标签必须和 08-chrome 里 #navbig 取的是同一个数（docs/20 §0）。
+             原来写「净资产」（公司层），而最大字要的是【身价】（集团层并表）。
+             单人公司时两者相等 ⇒ 一直看不出错；有第二家公司后就开始说谎。
+             注意：这里不能出现两星连写的强调写法 —— 页面文案里只允许 <b>，
+             否则文案闸门会报 Markdown 泄漏（本注释已被拦过一次）。 -->
+        <div id="navlab">身价</div>
       </div>
       <div id="navmeta"></div>
     </div>
@@ -1536,6 +1545,11 @@ Game.prototype._init = function (opts) {
     /* 信匣（docs/20 §2.1）：只装**指名寄给人的信**，与 feed（公共流水）分开。
        旧存档没有这个键 → 引擎与 UI 一律用 Array.isArray 兜底，不做迁移。 */
     inbox: [], inboxSeq: 0,
+    /* NPC 提案（docs/19 §4.9）：对方主动发来的合作请求 / 收购通知。
+       与 inbox 分开存：信是“通知”，提案是“可执行的东西”（有状态机
+       open / accepted / declined / lapsed）；信只是它的一张脸。
+       混在一起的话，“这封信还能不能点”就得去猜字符串了。 */
+    offers: [], offersSeq: 0, offerSlot: 0,
     stats: { injections: 0, trades: 0, monopolist: null },
     seq: 0,
   };
@@ -3682,10 +3696,148 @@ Game.prototype._mailTick = function () {
   }
 };
 
+/* ---- 3.9c NPC 提案（docs/19 §4.9：合作请求 / 收购通知 由对方主动发起，投进信匣）----------
+   ⚠ 为什么用**独立随机流**（hash32(seed,'offers')）：一旦借用 this.rng.npc / main，
+     就会挪动其它系统共用的随机序列 —— 660 局仿真的结果会整体变样。
+     那不是“改对了”，是“换了个游戏”，而且 15 项守卫里没一项能告诉你“仿真变了是因为谁”。
+   ⚠ 提案本身**不改任何状态**，只在答复时结算（见 _decideOffer）。
+     否则仿真里会凭空多出钱货，而人一次点击就能把不变量撞坏。
+   ⚠ 提案只发给玩家（humanId）：NPC 之间不走信匣。 */
+Game.prototype._offerRng = function () {
+  /* 懒建 + 不进存档：它只由 seed 决定，读档后重建即得同一条流。 */
+  if (!this._offRng) this._offRng = new Rng(hash32(this.s.seed, 'offers'));
+  return this._offRng;
+};
+
+Game.prototype._offerTick = function () {
+  const s = this.s;
+  if (!s || !Array.isArray(s.players)) return;
+  if (!Array.isArray(s.offers)) s.offers = [];
+  if (!Array.isArray(s.inbox)) s.inbox = [];
+  if (typeof s.offersSeq !== 'number') s.offersSeq = 0;
+  if (typeof s.offerSlot !== 'number') s.offerSlot = 0;
+  const me = s.players.find(p => p.id === s.humanId);
+  if (!me || !me.alive) return;
+
+  /* 过期：提案有寿命。超时不是“没发生”，而是“对方把这个条件收回了”。 */
+  for (const o of s.offers) if (o.status === 'open' && s.t > o.deadlineT) o.status = 'lapsed';
+
+  /* 前 6 个游戏小时是新手引导期，不打扰；之后每满 8 小时看一眼有没有人来谈事。 */
+  if (s.t < 6 * 60) return;
+  const slot = Math.floor(s.t / (8 * 60));
+  if (slot <= s.offerSlot) return;
+  s.offerSlot = slot;
+
+  if (s.offers.filter(o => o.status === 'open').length >= 2) return;   /* 最多两件事等你答复 */
+  const r = this._offerRng();
+  if (!r.chance(0.55)) return;
+  const others = s.players.filter(p => p.id !== s.humanId && p.alive);
+  if (!others.length) return;
+  const npc = others[Math.min(others.length - 1, Math.floor(r.next() * others.length))];
+
+  /* 两选一：他要借你的钱 / 他要按溢价收你仓库里的货。只挑真做得成的那个。 */
+  const lendable = Math.round(me.cash * 0.3 / 100) * 100;
+  const canLoan = lendable >= 800;
+  /* ⚠ 仓库（storage）里不只放作物，还放**加工品** —— 是同一个筐。
+     所以这里必须按“它在 s.crops 或 s.products 里有没有价”来筛。
+     我第一版只筛了“数量 > 0”，于是制造线一进到这里就崩：
+       s.crops['萝卜干'].price → Cannot read properties of undefined
+     660 局仿真里正是这样报出 48 条异常的（其余策略 0 条 —— 它们的仓库里只有作物）。 */
+  const held = Object.keys(me.storage || {}).filter(k =>
+    (s.crops[k] || s.products[k]) && Math.floor(me.storage[k] || 0) > 0);
+  const canBuy = held.length > 0;
+  if (!canLoan && !canBuy) return;
+  const kind = (canLoan && canBuy) ? (r.chance(0.5) ? 'loan' : 'buy') : (canLoan ? 'loan' : 'buy');
+
+  const deadlineT = s.t + 1440;                    /* 一天内答复 */
+  const o = {
+    i: ++s.offersSeq, t: Math.round(s.t), from: npc.id, fromName: npc.name,
+    kind, status: 'open', deadlineT, mailId: null,
+  };
+  let subject, body;
+  if (kind === 'loan') {
+    o.amount = clamp(lendable, 800, 8000);
+    o.rateDay = round2(BAL.loanRateDay * (1.6 + r.range(0, 0.9)));
+    o.dueT = s.t + 2 * 1440;
+    subject = npc.name + ' 想借 ' + money(o.amount) + ' G';
+    body = npc.name + ' 手头周转不开，想跟你借 ' + money(o.amount) + ' G，' +
+      '按每天 ' + (o.rateDay * 100).toFixed(1) + '% 计息，两天内还本付息。\n' +
+      '你答应的话，钱当场从你账上划走；到期他不还，这笔就烂在你手里。';
+  } else {
+    const cid = held[Math.min(held.length - 1, Math.floor(r.next() * held.length))];
+    const c = s.crops[cid] || s.products[cid];
+    o.crop = cid;
+    o.qty = Math.floor(me.storage[cid] || 0);
+    o.mult = round2(1.12 + r.range(0, 0.23));      /* 溢价 12% ~ 35% */
+    o.price = round2(c.price * o.mult);
+    subject = npc.name + ' 出价要你手里的 ' + c.name;
+    body = npc.name + ' 想一次把你手上的 ' + c.name + ' 全买走（' + o.qty + ' 单位），' +
+      '开价 ' + o.price + ' G/单位，比眼下市价高 ' + Math.round((o.mult - 1) * 100) + '%。\n' +
+      '这是场外交易，价格不会因此被压下去。答应就当场交割。';
+  }
+  o.mailId = this._mail(me.id, kind === 'loan' ? 'coop' : 'buyout', npc.name, subject, body,
+    { deadlineT, actions: ['accept', 'decline'] }).i;
+  s.offers.push(o);
+};
+
+/* 答复一份提案。**只有这里会改变状态**（提案本身只读，见 _offerTick 的注释）。
+   p = 答复的人（目前只有玩家会走到这）。accept = 接受 / 拒绝。 */
+Game.prototype._decideOffer = function (p, id, accept) {
+  const s = this.s;
+  if (!Array.isArray(s.offers)) s.offers = [];
+  const o = s.offers.find(x => x.i === id);
+  if (!o) return { ok: false, msg: '这封信已经不在了' };
+  if (o.status !== 'open') return { ok: false, msg: '这件事你已经答复过了' };
+  if (s.t > o.deadlineT) { o.status = 'lapsed'; return { ok: false, msg: '答复时间已经过了' }; }
+  const npc = s.players.find(x => x.id === o.from);
+  if (!accept) {
+    o.status = 'declined';
+    return { ok: true, msg: '已回绝。' };
+  }
+  if (o.kind === 'loan') {
+    if (p.cash < o.amount) return { ok: false, msg: '你手上的现金不够借给他' };
+    p.cash -= o.amount;
+    /* 字段形状与 13-talent.js:131 的放贷一致，到期由 04-ticks 的到期钩子收本息 / 认坏账。 */
+    p.loansOut.push({ toPid: o.from, principal: o.amount, rateDay: o.rateDay, dueT: o.dueT });
+    if (npc) npc.cash += o.amount;
+    o.status = 'accepted';
+    this._log('money', p.name + ' 借给 ' + (npc ? npc.name : '某人') + ' ' + money(o.amount) +
+      ' G（每天 ' + (o.rateDay * 100).toFixed(1) + '% 计息）', p.id);
+    return { ok: true, msg: '钱已经划给他了，到期自动收本息。' };
+  }
+  /* buy：场外交割。不动盘面（这正是对方能给溢价的理由）。 */
+  const have = Math.floor(p.storage[o.crop] || 0);
+  const qty = Math.min(o.qty, have);
+  if (qty <= 0) {
+    o.status = 'lapsed';
+    return { ok: false, msg: '你手上已经没有这种货了' };
+  }
+  const gross = qty * o.price;
+  const book = p.avgCost[o.crop] || { q: 0, c: 0 };
+  const profit = gross - qty * book.c;        /* 成本口径与 06-trade.js:106 的成交一致 */
+  p.storage[o.crop] = have - qty;
+  if (p.avgCost[o.crop]) p.avgCost[o.crop].q = Math.max(0, book.q - qty);
+  p.cash += gross;
+  p.realized += profit;
+  p.m.realized += profit;
+  if (npc) npc.cash -= gross;
+  o.status = 'accepted';
+  const gname = (s.crops[o.crop] || s.products[o.crop] || {}).name || o.crop;
+  this._log('trade', p.name + ' 把手上的 ' + gname + ' 一次卖给 ' +
+    (npc ? npc.name : '某人') + '（' + qty + ' 单位 @' + o.price + '）', p.id);
+  return { ok: true, msg: '已交割，钱到账。' };
+};
+
+/* 动作入口：Game.prototype.act 是按 `_a_` + name 反射查找的，
+   所以新增动作只需加方法，**不用去改任何分派表**（也就不会踩到别人正在改的那段）。 */
+Game.prototype._a_acceptOffer = function (p, d) { return this._decideOffer(p, +d.id, true); };
+Game.prototype._a_declineOffer = function (p, d) { return this._decideOffer(p, +d.id, false); };
+
 Game.prototype._flush = function () {
-  /* 派生式信件的唯一入口。放在 listeners 之前：这样订阅者（UI）拿到的 s
-     已经包含本帧新到的信，不会出现“预览图有信、信匣里没有”的错位。 */
+  /* 派生式信件与 NPC 提案的唯一入口。放在 listeners 之前：这样订阅者（UI）拿到的 s
+     已经包含本帧新到的东西，不会出现“预览图有信、信匣里没有”的错位。 */
   this._mailTick();
+  this._offerTick();
   for (const fn of this.listeners) fn(this.s);
 };
 
@@ -4341,7 +4493,7 @@ function setSpeed(mult) {
 
 /* ---------- 顶栏 ---------- */
 function renderTop() {
-  const s = G.s, nav = G.nav(HUMAN);
+  const s = G.s;
   /* 顶栏永远是“我”（集团），底栏永远是“这家公司”（docs/20 §2.3）。
      · 一级（总账）：crumb 显示 🏠 总账，**不出现公司名**；
      · 二级（公司工作台）：crumb 变成「← 集团」，回根入口恒在左上角，
@@ -4363,7 +4515,12 @@ function renderTop() {
       : '<b class="crumb on">🏠 总账</b>');
   $('#clock').innerHTML = crumb + '第 <b>' + dayOf(s.t) + '</b> 天 <b>' + hhmm(s.t) + '</b>' +
     (ui.root ? '' : ' · ' + esc(HUMAN.corpName)) + mailSeal();
-  $('#navbig').innerHTML = fmt(nav) + '<small>G</small>';
+  /* ⚠ 顶栏最大字必须是【身价】（集团层并表），不是单一公司的净资产
+     （docs/20 §0 三个钱数永不同屏并列 / §2.1 的 Z0 定就是身价）。
+     单人公司时两个数相等，所以这个错一直看不见；一旦手里有第二家公司
+     （参股 / 控股），顶栏就会开始说谎 —— 而它是玩家判断“我值多少”的唯一大字。
+     ⚠ 必须与 index.html 的 #navlab 文案同步（那里原本写的是「净资产」）。 */
+  $('#navbig').innerHTML = fmt(G.consolidated(HUMAN).nav) + '<small>G</small>';
   const invV = G.inventoryValue(HUMAN), debt = HUMAN.debt + G.shortLiability(HUMAN);
   /* 四个指标压进一行：净资产在左（大字号），现金/库存/欠款在右。
      改造前 #navmeta 用 <br> 排成两行、净资产再独占一行，#top 一共 145px（占手机 17% 屏高）。
@@ -5224,20 +5381,16 @@ function ledgerBook() {
 }
 
 function viewLedger() {
-  const sheet = G.consolidated(HUMAN);
   const book = ledgerBook();
   const belt = ledgerBelt();
   const held = book.filter(r => !r.mine).length;
 
   return '<div class="ledger">' +
-    /* Z0 身价：本屏唯一的大字（顶栏那个数仍归公司层，本批不动它 —— 见 docs/20 §0 待办） */
-    '<div class="worth">' +
-      '<div class="wlab">身价</div>' +
-      '<div class="wnum">' + fmt(sheet.nav) + '<small>G</small></div>' +
-      '<div class="wsub">手上的现金 ' + fmt(HUMAN.cash + (HUMAN.deposit || 0)) + ' G' +
-        ' · 欠着 ' + fmt(sheet.debt) + ' G' +
-        ' · 还能借 ' + fmt(G.creditLimit(HUMAN)) + ' G</div>' +
-    '</div>' +
+    /* Z0 身价**不在这里画**：docs/20 §2.1 的 Z0 就是「顶栏」本身
+       （身价印章超大字 · 现金 · 授信 · 日子），不是正文里的一张卡。
+       我第一版把它当正文卡片画，结果同一个数在一屏里挂了三个标签
+       （顶栏大字 / 身价卡 / 公司卡家底）—— 正是 §0「三个钱数永不同屏并列」要防的事。
+       现在顶栏那个大字已经改成身价（08-chrome），本屏从 Z1 告急带开始。 */
 
     /* Z1 告急带：有内容才显（空数组 = 整条不占屏）。已是一段现成 HTML，直出。 */
     (belt.length ? '<div class="belt">' + belt.join('') + '</div>' : '') +
@@ -5351,11 +5504,10 @@ function mailRow(m) {
 function viewMailDetail(m) {
   const dl = m.deadlineT != null
     ? '<div class="mdlg">剩 ' + secLeftTxt(m.deadlineT - G.s.t) + '</div>' : '';
-  /* ⚠ 票决的三按钮（docs/20 §2.1「票决｜决议邮件详情」）本批**故意不画**：
-     决议的数据模型（我方持股% / 提案方持股% / 门槛 50%/66.7% / 议案生命周期）
-     还没落地，现在画出来就是三颗死按钮 —— 而死按钮这个坑本项目刚踩过一次
-     （viewMake 的「再建一间作坊」：一颗死键同时造成"建不了"和"开不了"两个症状）。
-     等那套数据模型落地，这里直接读 m.actions 渲染。 */
+  /* 信件里的可执行动作（docs/19 §4.9：答复 / 投票的入口就放在邮箱里）。
+     目前只有 NPC 提案（合作请求 / 收购通知）走这条；票决的三按钮
+     （赞成 / 反对 / 弃权）要等股东结构（持股% + 门槛 50%/66.7%）落地再接 ——
+     但那时同样只需往 m.actions 里加值，这里不用改（所以按“动作表”渲染，不写死按钮）。 */
   return '<div class="ledger mail">' +
     '<button class="back" data-mailback="1">← 信匣</button>' +
     '<div class="md">' +
@@ -5363,7 +5515,29 @@ function viewMailDetail(m) {
       '<div class="mdsub">' + esc(m.subject) + '</div>' +
       dl +
       '<div class="mdbody">' + esc(m.body) + '</div>' +
+      mailOffer(m) +
     '</div>' +
+  '</div>';
+}
+
+/* 提案的答复区。
+   ⚠ 能不能点、点了会怎样，全部由**引擎的 offer.status** 决定，UI 不自己猜 ——
+     否则会出现“信上还说能答应、其实早过期了”的假按钮（本项目的死按钮坑）。 */
+function mailOffer(m) {
+  const s = G.s;
+  const o = (Array.isArray(s.offers) ? s.offers : []).find(x => x.mailId === m.i);
+  if (!o) return '';
+  if (o.status !== 'open') {
+    const done = { accepted: '你答应了，这件事已经办完。', declined: '你回绝了。',
+                   lapsed: '过期了，对方把条件收了回去。' };
+    return '<div class="mdec done">' + (done[o.status] || '这件事已经结束。') + '</div>';
+  }
+  if (s.t > o.deadlineT) return '<div class="mdec done">过期了，对方把条件收了回去。</div>';
+  const yes = o.kind === 'loan' ? '借给他' : '卖给他';
+  const no = o.kind === 'loan' ? '不借' : '不卖';
+  return '<div class="mdec">' +
+    '<button class="btn p" data-offer="accept:' + o.i + '">' + yes + '</button>' +
+    '<button class="btn" data-offer="decline:' + o.i + '">' + no + '</button>' +
   '</div>';
 }
 
@@ -5536,6 +5710,14 @@ function handleAction(e) {
   /* 信匣：打开一封 / 返回列表。已读写进引擎状态，空态则回列表（见 18-mail.js）。 */
   if (d.mail) { mailOpenBy(+d.mail); return; }
   if (d.mailback) { mailClose(); return; }
+  /* 答复信里的提案（合作请求 / 收购通知）。
+     走引擎动作 _a_acceptOffer / _a_declineOffer —— 钱货结算、流水、存档全在引擎
+     那一侧完成，UI 只管把“谁答复了哪一条、接不接受”送进去。 */
+  if (d.offer) {
+    const [k, oid] = d.offer.split(':');
+    A(k === 'accept' ? 'acceptOffer' : 'declineOffer', { id: +oid });
+    render(true); return;
+  }
   /* data-root：一级屏切换（docs/20 §3）。值 = 去哪张一级屏：
        'ledger'（默认，合并老存档里的 "1"） / 'mail'（顶栏信匣章）。
      ⚠ ui.root 因此从布尔变成**模式串**：布尔存不下“我有两张一级屏”，

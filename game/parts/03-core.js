@@ -100,6 +100,11 @@ Game.prototype._init = function (opts) {
     /* 信匣（docs/20 §2.1）：只装**指名寄给人的信**，与 feed（公共流水）分开。
        旧存档没有这个键 → 引擎与 UI 一律用 Array.isArray 兜底，不做迁移。 */
     inbox: [], inboxSeq: 0,
+    /* NPC 提案（docs/19 §4.9）：对方主动发来的合作请求 / 收购通知。
+       与 inbox 分开存：信是“通知”，提案是“可执行的东西”（有状态机
+       open / accepted / declined / lapsed）；信只是它的一张脸。
+       混在一起的话，“这封信还能不能点”就得去猜字符串了。 */
+    offers: [], offersSeq: 0, offerSlot: 0,
     stats: { injections: 0, trades: 0, monopolist: null },
     seq: 0,
   };
