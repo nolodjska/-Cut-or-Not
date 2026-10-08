@@ -153,7 +153,10 @@ function viewLedger() {
           '<div class="ft">' + esc(r.name) + '<span class="tag">' +
             (r.control >= 0.5 ? '控股' : '参股') + '</span></div>' +
           '<div class="fl"><span class="lamp ' + r.lamp + '"></span>持股 ' +
-            Math.round(r.stake * 100) + '% · 家底 ' + fmt(r.nav) + ' G</div>' +
+            Math.round(r.stake * 100) + '% · 家底 ' + fmt(r.nav) + ' G' +
+            /* 估值与家底**并列但分清**（§4.6）：家底是你按股比拿到的那部分，
+               估值是“整家公司要卖，市场肯出多少”。两个数不一样，是故意的。 */
+            (r.mine ? ' · 估值 ' + fmt(G.valuation(HUMAN)) + ' G' : '') + '</div>' +
         '</div>' +
         '<div class="fact">' +
           (r.control >= 0.5
@@ -163,6 +166,8 @@ function viewLedger() {
                  ⚠ 用 data-act（不用自定义 data-*）：这样 wiring-check 会**自动验证**这颗按钮
                    真的接到了分派表上 —— 当年“工坊修不了”就是一颗没人接的死按钮。 */
               (r.mine ? '<button class="btn" data-act="take">从公司拿钱</button>' : '')
+            /* §4.10 上市：发股份换现金。⚠ 只在**自己主控**的公司上出现。 */
+            + (r.mine ? '<button class="btn" data-act="ipo">发股份募资</button>' : '')
             : '<button class="btn" disabled>只参股，不下手</button>') +
         '</div>' +
       '</div>').join('') + '</div>' +

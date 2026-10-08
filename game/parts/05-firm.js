@@ -50,6 +50,52 @@ Game.prototype._a_take = function (p, d) {
   return { ok: true, msg: '拿走 ' + money(amt) + ' G。这笔记在你名下，是要还的 —— 所以你的身价没变' };
 };
 
+/* ---- 4.6 估值 / 4.10 上市（docs/19 §4.6 §4.10）---------------------- */
+/* 这家公司值多少钱：估值 = 可辨认净资产 × 可比乘数。
+   ⚠ 估值**不等于**身价。身价 = 你按持股比例拿到的那部分净资产（consolidated）；
+     估值 = “整家公司要卖，市场肯出多少”。两者差的就是行当溢价。
+     把它们混成一件事，“卖自己股份”看上去就像印钞 —— 那是 F4 哨兵钉住的东西。 */
+Game.prototype.valuation = function (p) {
+  const m = BAL.corpMult[p.corp] == null ? 1 : BAL.corpMult[p.corp];
+  return Math.max(0, Math.round(this.nav(p) * m));
+};
+
+/* 上市募资（docs/19 §4.10）：把公司的一部分股份发出去，换现金回来。
+   ① 发行价 = 估值（不做“自己定价”的旋钮 —— 那是个印钞口）
+   ② 募来的钱进**公司账**（p.cash），不进个人钱包
+   ③ 你让出多少股份，并表身价就按多少打折 ⇒ 上市当场**不会**让你凭空变富
+      （能变富只靠这笔钱真赚出差价）
+   ④ 让出有上限，且**不得让自己掉到一半以下** —— 否则说不上话了，
+      也会让“反复发行”变成一个可反复收割的口子。 */
+Game.prototype._a_ipo = function (p, d) {
+  const own = (Array.isArray(p.holdings) ? p.holdings : []).find(h => h.corpId === p.corp);
+  if (!own) return { ok: false, msg: '你手上没有这家公司' };
+  const cur = own.stake == null ? 1 : own.stake;
+  /* ⚠ 超过可让范围要**明确拒绝**，不许静默截断 ——
+     玩家说“让 60%”却默默只让 35%，他以为的剩股数是错的（最坏的一类 UX 错）。
+     可让范围 = min（单次上限, 让自己还剩一半）——两者取小。 */
+  const maxGive = Math.min(BAL.ipoMaxGive, cur - 0.5);
+  const give = d.give == null ? 0.25 : d.give;
+  if (!(give > 0)) return { ok: false, msg: '要让出多少股份，得说个数' };
+  if (give > maxGive + 1e-9) {
+    return { ok: false, msg: '最多只能让出 ' + Math.round(maxGive * 100) +
+      '% —— 再让下去，这家公司你就说不上话了' };
+  }
+  const val = this.valuation(p);
+  const raise = Math.floor(val * give);
+  if (raise <= 0) return { ok: false, msg: '公司现在估值太低，发出去也没人接' };
+  const fee = Math.floor(raise * BAL.ipoFeeRate);
+  const net = raise - fee;
+  p.cash += net;
+  own.stake = Math.round((cur - give) * 10000) / 10000;
+  own.listed = true;
+  p.m.ipoRaised = (p.m.ipoRaised || 0) + net;
+  this._log('trade', p.name + '的公司发了一部分股份出去，募到 ' + money(net) + ' G（自己持股降到 ' +
+    Math.round(own.stake * 100) + '%）', p.id);
+  return { ok: true, msg: '募到 ' + money(net) + ' G（发行费 ' + money(fee) + ' G）。你手里还剩 ' +
+    Math.round(own.stake * 100) + '% —— 身价不会因为这一下变高' };
+};
+
 /* ---- 4.13 股东名册与决议（docs/19 §4.13 / §4.14）--------------------- */
 /* 名册（docs/19 §4.13）——返回**这家公司**的持股人。
    ⚠ 口径必须说清（我第一版错了，G1 当场抓到）：

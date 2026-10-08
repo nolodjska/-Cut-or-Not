@@ -110,6 +110,8 @@ if (d.root) {
   if (d.act === 'dividend') { A('propose', { kind: 'dividend', ratio: 0.5 }); return; }
   if (d.act === 'votefor') { A('vote', { id: +d.id, for: true }); return; }
   if (d.act === 'voteagainst') { A('vote', { id: +d.id, for: false }); return; }
+  /* §4.10 上市募资：默认让出 25%（上限 35%，且不得掉到剩下一半以下）。 */
+  if (d.act === 'ipo') { A('ipo', { give: 0.25 }); return; }
 
   if (d.qset) {
     const [cid, v] = d.qset.split(':');

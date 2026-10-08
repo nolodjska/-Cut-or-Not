@@ -141,6 +141,14 @@ const BAL = {
   landUses: ['grain', 'cash', 'facility'],
   landUseName: { grain: '粮田', cash: '经济作物地', facility: '设施用地' },
   landDistrictName: { suburb: '城郊', town: '镇上', core: '核心地段' },
+  /* ---- 估值与上市（docs/19 §4.6 / §4.10）----
+     估值 = 可辨认净资产 × 可比乘数，乘数按公司类型给：
+     “同一块钱的家底，在不同行当里被市场给不同价”的最简模型。
+     ⚠ 估值 ≠ 身价：身价 = 你按**持股比例**拿到的那部分净资产；
+       估值 = “整家公司要卖，市场肯出多少”。两者差的就是行当溢价。 */
+  corpMult: { grow: 1.0, trade: 1.15, intel: 1.35, shell: 1.25, make: 1.40, fin: 1.30 },
+  ipoMaxGive: 0.35,      // 一次发行最多让出的股份
+  ipoFeeRate: 0.03,      // 发行费用（从募资里扣）
 };
 
 /* 作物表：数值镜像 docs/06 §5 */

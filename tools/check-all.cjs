@@ -34,6 +34,7 @@ const STEPS = [
   ['公司账     ', 'node tools/finance.test.cjs',          /全部通过|项失败/],
   ['股东会     ', 'node tools/governance.test.cjs',       /全部通过|项失败/],
   ['地皮       ', 'node tools/land.test.cjs',             /全部通过|项失败/],
+  ['估值与上市 ', 'node tools/valuation.test.cjs',        /全部通过|项失败/],
   ['迁移守卫·引擎', 'node tools/parts-verify.cjs',         /全部通过|失败/],
   ['迁移守卫·UI ', 'node tools/ui-verify.cjs',            /全部通过|失败/],
   ['660 局仿真 ', 'node tools/sim.cjs 60 8',              /不变量异常/],
