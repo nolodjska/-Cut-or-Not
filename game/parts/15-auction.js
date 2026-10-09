@@ -427,6 +427,10 @@ Game.prototype._decideOffer = function (p, id, accept) {
   if (o.kind === 'jv' || o.kind === 'invite' || o.kind === 'borrow') {
     return this._settleNew(p, o, accept);
   }
+  /* §4·14 C 随售权：买方来收一家公司、你作为**小股东**决定跟不跟卖。 */
+  if (o.kind === 'tag') {
+    return this._settleTag(p, o);
+  }
   if (o.kind === 'loan') {
     if (p.cash < o.amount) return { ok: false, msg: '你手上的现金不够借给他' };
     p.cash -= o.amount;
@@ -606,8 +610,60 @@ Game.prototype._settleNew = function (p, o, accept) {
       return { ok: true, msg: '按规矩，其他股东可以同价先拿 —— ' + hp.name +
         ' 把它拿走了。这价你买不到了。' };
     }
+    const oldCtrl = cur > 0.5;
     deliver(buyer);
     const ctrl = ownH.stake <= 0.5;
+    /* ==== §4·14 C　随售权（tag-along）· 与 §4·13 “特别决议”天然咬合 ====
+       ROFR 解决“谁先买”；随售解决“小股东能不能跟着走”。故必须排在 ROFR **之后**，
+       否则两条规则会互相吃掉。
+       · 触发：这一笔**换了掌舵人**（卖方原本 >50%、卖完 ≤50% ⇒ 大股东易主）。
+       · 规则：其余小股东可**同价**把自己的股份一并卖给买方（自愿，非强制）。
+       ⚠ 公平价用**同一个函数** stakePrice(seller, r.stake) 算，不自己推公式 ——
+         否则“同价”无从谈起（自己另算一套必然对不上）。
+       ⚠ 领售权（drag-along，强制一起卖）**本轮不实现**：它会**强行**把别人的股份划走，
+         属于“外部影响操作”，且现实里要靠 §4·13 的 66.7% 特别决议授权 ——
+         没有那份决议就强制过户，等于凭空剥夺产权。留到决议能授权时再接。 */
+    if (oldCtrl && ctrl) {
+      const cap = this.capTable(seller, seller.corp);
+      const smalls = cap.rows.filter(r => r.pid !== buyer.id && r.pid !== seller.id && r.stake > 0);
+      for (const r of smalls) {
+        const sp = s.players.find(x => x.id === r.pid);
+        if (!sp || !sp.alive) continue;
+        /* ⚠ 小股东的股份在 **stakes[]** 里（“我在别人公司持股”），不在 holdings[]！
+           holdings[] 只有“我自己主控的公司”。我第一版查了 holdings ⇒ 永远找不到 ⇒ 随售从不触发。 */
+        const stk = Math.min(r.stake, (sp.stakes || [])
+          .filter(st => st && st.targetPid === seller.id)
+          .reduce((a, st) => a + (st.stake || 0), 0));
+        if (!(stk > 0)) continue;
+        const fair = Math.round(this.stakePrice(seller, stk));
+        if (!(fair > 0)) continue;
+        const canPay = buyer.cash >= fair;   // 钱是现实约束，买方付不出就不能跟（免得现金抽成负数）
+        if (sp.isHuman) {
+          /* 玩家是小股东 ⇒ 走“一问一答”，不静默处理 —— 否则玩家会觉得股份被偷了。 */
+          o.tag = {
+            i: ++s.offersSeq, t: Math.round(s.t), from: buyer.id, fromName: buyer.name,
+            to: sp.id, kind: 'tag', status: 'open', stake: stk, price: fair,
+            sellerPid: seller.id, outbound: false, deadlineT: s.t + 1440,
+          };
+          s.offers.push(o.tag);
+          if (s.offers.length > 60) s.offers.splice(0, s.offers.length - 60);
+          this._log('deal', '有人来收 ' + seller.name + ' 这家公司 —— 你手上的股份可以<b>同价一起卖</b>' +
+            '（随售权），要么跟、要么留。', sp.id);
+        } else if (canPay) {
+          /* NPC 小股东：现实里多数会跟（能变现就变现）。确定性伪随机，不扰动主 RNG 流。 */
+          const h32 = (typeof hash32 === 'function') ? hash32
+            : (typeof GG !== 'undefined' && GG.hash32) ? GG.hash32 : function () { return 1; };
+          const roll = Math.abs(h32('tag', seller.id, sp.id, Math.round(s.t))) % 100;
+          if (roll < 70) {
+            buyer.cash -= fair; seller.cash += fair;
+            /* 从 sp.stakes[] 里真正划走（不是 holdings —— 同一处同类错，见上）。 */
+            sp.stakes = (sp.stakes || []).filter(st => !(st && st.targetPid === seller.id));
+            buyer.stakes.push({ targetPid: seller.id, stake: r.stake, price: fair, t: Math.round(s.t), via: 'tag' });
+            this._log('deal', sp.name + ' 跟着把股份卖了（随售权）—— 他拿到 ' + money(fair) + ' G', buyer.id);
+          }
+        }
+      }
+    }
     this._log('deal', buyer.name + ' 买下了 ' + seller.name + ' 公司 ' + Math.round(give * 100) +
       '% 的股份（出 ' + money(price) + ' G）' + (ctrl ? ' —— 这家公司他说了算' : ''), buyer.id);
     return { ok: true, msg: '成交：你拿下 ' + Math.round(give * 100) + '% 的股份 —— ' +
@@ -677,6 +733,32 @@ Game.prototype._npcAnswer = function (o) {
     return;
   }
   o.status = 'lapsed';
+};
+
+/* §4·14 C 随售权结算（p = 决定跟卖/留下的**小股东**）。
+   ⚠ “同价”= 买方给大股东的**同一个单价**，所以用 stakePrice(seller, stake) 换算，
+     即 price 已由发起方（_settleNew 的随售分支）按同一口径算好了；这里只扣钱/过户。
+   ⚠ 买方现金不足时**不成交**（宁可这次随售失败，也不把买方现金抽成负数）。 */
+Game.prototype._settleTag = function (p, o) {
+  const s = this.s;
+  const buyer = s.players.find(x => x.id === o.from);
+  const seller = s.players.find(x => x.id === o.sellerPid);
+  if (!buyer || !buyer.alive || !seller) { o.status = 'lapsed'; return { ok: false, msg: '这笔买卖已经不在了' }; }
+  /* ⚠ 小股东的持股在 **stakes[]**（与触发处同一口径），不在 holdings[]。 */
+  const held = (p.stakes || []).filter(st => st && st.targetPid === seller.id)
+    .reduce((a, st) => a + (st.stake || 0), 0);
+  const stake = Math.min(o.stake, held);
+  if (!(stake > 0)) { o.status = 'lapsed'; return { ok: false, msg: '你手上已经没有这家公司的股份了' }; }
+  const price = Math.round(this.stakePrice(seller, stake));
+  if (!(price > 0)) { o.status = 'lapsed'; return { ok: false, msg: '他给的价现在没意义，先算了' }; }
+  if (buyer.cash < price) { o.status = 'lapsed'; return { ok: false, msg: '买方现在拿不出这笔钱，这次跟不成了' }; }
+  buyer.cash -= price; seller.cash += price;         /* 同一条口径：钱进**卖方公司账** */
+  p.stakes = (p.stakes || []).filter(st => !(st && st.targetPid === seller.id));   /* 随售 = 把这家的股份全额划走 */
+  if (!Array.isArray(buyer.stakes)) buyer.stakes = [];
+  buyer.stakes.push({ targetPid: seller.id, stake, price, t: Math.round(s.t), via: 'tag' });
+  o.status = 'accepted';
+  this._log('deal', p.name + ' 跟着把股份卖了（随售权）—— 他拿到 ' + money(price) + ' G', p.id);
+  return { ok: true, msg: '成交：你的股份按同一个价卖掉了，钱已经到公司账。' };
 };
 
 Game.prototype._flush = function () {

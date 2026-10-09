@@ -10,6 +10,7 @@
  *   G4 **四态分开**：没人理 / 通过 / 否决 三种必须落成三种不同状态
  *   G5 分红：现金↓、个人钱包↑，而**并表身价不变**（分红不是印钞）
  *   G6 净资产为负时不许分红（法定顺序第①步：先弥补亏损）
+ *   G7 **第四态「僵局」**：赞成=反对、两边都不过门槛 ⇒ deadlocked（与「否决」必须分得开）
  *
  * 用法：node tools/governance.test.cjs      # 期望全绿
  */
@@ -134,7 +135,54 @@ ok('巨额负债下分红不生效、现金不动', () => {
   assert(h.cash === c0, '净资产为负时分红不该生效（先弥补亏损）');
 });
 
+/* ---------------- G7 第四态「僵局」（§4.13-C / §4.18.4） ---------------- */
+console.log('\nG7 僵局：势均力敌、两边都不过门槛 ⇒ deadlocked（不能并进「否决」）');
+ok('特别决议 50:50 顶上 → 僵局；70:30 → 才是否决；两者状态不同', () => {
+  /* ⚠ _a_vote 目前只允许**提案人**表态（多股东表决流程是另一块缺口），
+     所以这里直接写 voters 来构造“两方对顶”，只测**计票与状态**这一段。 */
+  const g = mk('GG-GOV-G7'), h = H(g);
+  const npc = g.s.players.find(p => !p.isHuman && p.alive);
+  assert(!!npc, '需要一个 NPC 当对手方');
+  npc.stakes = npc.stakes || [];
+  npc.stakes.push({ targetPid: h.id, stake: 0.5 });   // 名册第二半：他持我方公司 50%
+  h.holdings[0].stake = 0.5;                          // 我留 50%
+  const cap = g.capTable(h, h.corp);
+  assert(cap.rows.length === 2, '名册应为两条，实得 ' + cap.rows.length);
+  g.act(h.id, 'propose', { kind: 'charter' });        // 特别决议，门槛 2/3
+  const d1 = lastDec(g);
+  d1.voters[h.id] = 'for'; d1.voters[npc.id] = 'against';   // 50:50
+  expire(g);
+  assert(d1.status === 'deadlocked', '50:50 对特别决议应判僵局，实得 ' + d1.status);
+
+  /* 70:30 ⇒ 反对票 0.7 ≥ 2/3 ⇒ 明确的「否决」，与僵局必须不同 */
+  const g2 = mk('GG-GOV-G7B'), h2 = H(g2);
+  const npc2 = g2.s.players.find(p => !p.isHuman && p.alive);
+  npc2.stakes = npc2.stakes || [];
+  npc2.stakes.push({ targetPid: h2.id, stake: 0.7 });
+  h2.holdings[0].stake = 0.3;
+  g2.act(h2.id, 'propose', { kind: 'charter' });
+  const d2 = lastDec(g2);
+  d2.voters[h2.id] = 'for'; d2.voters[npc2.id] = 'against';
+  expire(g2);
+  assert(d2.status === 'votedown', '70:30 应判否决，实得 ' + d2.status);
+  assert(d1.status !== d2.status, '僵局与否决必须是两种状态 —— §4.14 的核心纪律');
+
+  /* 弃票进分母：我 0.45 赞成 + 他 0.35 反对 + 弃 0.20 ⇒ 都不达 2/3 ⇒ 僵局
+     （旧写法 yes/(yes+no)=0.5625 会误判“过半”→ 这是口径修正的哨兵） */
+  const g3 = mk('GG-GOV-G7C'), h3 = H(g3);
+  const npc3 = g3.s.players.find(p => !p.isHuman && p.alive);
+  const npc3b = g3.s.players.filter(p => !p.isHuman && p.alive)[1];
+  npc3.stakes = npc3.stakes || []; npc3.stakes.push({ targetPid: h3.id, stake: 0.35 });
+  npc3b.stakes = npc3b.stakes || []; npc3b.stakes.push({ targetPid: h3.id, stake: 0.20 });  // 弃票
+  h3.holdings[0].stake = 0.45;
+  g3.act(h3.id, 'propose', { kind: 'charter' });
+  const d3 = lastDec(g3);
+  d3.voters[h3.id] = 'for'; d3.voters[npc3.id] = 'against';   // npc3b 不表态 = 弃票
+  expire(g3);
+  assert(d3.status === 'deadlocked', '有弃票时仍应判僵局（弃票进分母），实得 ' + d3.status);
+});
+
 console.log('\n' + (errs.length
   ? '❌ 共 ' + errs.length + ' 项失败：\n   - ' + errs.join('\n   - ')
-  : '✅ 全部通过（股东名册与决议 6 条不变量）'));
+  : '✅ 全部通过（股东名册与决议 7 条不变量）'));
 process.exit(errs.length ? 1 : 0);

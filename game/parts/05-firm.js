@@ -218,12 +218,20 @@ Game.prototype._decisionTick = function () {
     }
     dec.turnout = cast / cap.total; dec.yes = yes / cap.total; dec.no = no / cap.total;
     if (s.t < dec.dueT) continue;
+    /* 门槛口径（docs/19 §4.18.4）：赞成票须**占总股本** ≥ 门槛；弃票进分母、不进分子 ——
+       否则“小股东集体不投票”反倒帮了通过方。
+       （旧写法 yes/(yes+no) 把弃票排除在分母外，有弃票时会给出相反结论。） */
     if (dec.turnout < spec.quorum) { dec.status = 'nobody'; dec.reason = '表态的人太少'; }
-    else if (yes / Math.max(1e-9, cast) >= spec.pass) { dec.status = 'pass'; }
-    else { dec.status = 'votedown'; dec.reason = '摇头的人更多'; }
+    else if (dec.yes >= spec.pass) { dec.status = 'pass'; }
+    else if (dec.no >= spec.pass) { dec.status = 'votedown'; dec.reason = '摇头的人更多'; }
+    /* 赞成 = 反对、两边都不过半 ⇒ 僵局（§4.13-C 第④态）。
+       与「否决」不同：不是多数反对，而是势均力敌、本次作废 —— 原来这一态根本没实现，
+       于是“两边顶上”会被错报成“摇头的人更多”，玩家看到的是错的原因。 */
+    else { dec.status = 'deadlocked'; dec.reason = '两边顶上，谁也不过半'; }
     if (dec.status === 'pass' && dec.kind === 'dividend') this._payDividend(dec.corpId, dec.ratio, cap);
     if (dec.status === 'pass') this._log('event', '✔ 那件事过了：' + dec.label, null);
     else if (dec.status === 'votedown') this._log('event', '✘ 那件事没过：' + dec.label + '（' + dec.reason + '）', null);
+    else if (dec.status === 'deadlocked') this._log('event', '⚖ 那件事顶住了：' + dec.label + '（' + dec.reason + '）', null);
     else this._log('event', '· 那件事没人理：' + dec.label, null);
   }
   if (decs.length > 20) s.decisions = decs.slice(-20);

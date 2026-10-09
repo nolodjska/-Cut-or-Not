@@ -227,7 +227,59 @@ ok('他的 capTable 从 1 条变 2 条、含我这条，且股比相加 = 1', ()
   assert(cap1.rows[0].stake >= cap1.rows[1].stake, '名册应按股比降序');
 });
 
+/* ---------------- S9 随售权（tag-along，§4·14 C） ---------------- */
+console.log('\nS9 随售权：大股东易主时，小股东收到“同价一起卖”的邀约，可以跟也可以留');
+ok('玩家小股东：连收两次“跟卖”，都跟 ⇒ 持股清零、卖方公司账进钱、不超过买方现金', () => {
+  const g = mk('GG-SOC-S9'), h = H(g), seller = others(g)[0], buyer = others(g)[1];
+  assert(!!buyer, '前提：至少两个 NPC');
+  h.cash = 1e6; buyer.cash = 1e7; seller.cash = 1e6;
+  /* ① 我先买下 seller 公司 20%（成为小股东，走正经链路） */
+  g.act(h.id, 'contact', { toPid: seller.id, kind: 'jv', give: 0.2 });
+  reply(g);
+  assert((h.stakes || []).some(st => st.targetPid === seller.id), '前提：我应先持有 20%');
+  /* ② 另一个 NPC（买家）来收 seller 的控制权：80% ⇒ 超过 50% ⇒ 触发随售 */
+  const o = npcBuyMyStake(g, buyer, seller, 0.2);   // 先只买 20%（不足 50%）——不会触发
+  g._settleNew(seller, o, true);
+  assert(!o.tag, '卖方没失去控制权时，不该发随售邀约（我这条断言锁“触发条件”）');
+  /* ③ 买家再买 55% ⇒ seller 持股 0.8-0.55=0.25 <0.5 ⇒ 易主 ⇒ 我收到随售邀约 */
+  const o2 = npcBuyMyStake(g, buyer, seller, 0.55);
+  const mineBefore = (h.holdings || []).find(x => x.corpId === h.corp);
+  const sellerCash0 = seller.cash;
+  g._settleNew(seller, o2, true);
+  assert(o2.tag && o2.tag.kind === 'tag', '易主时应给小股东发一份 tag 邀约');
+  assert(o2.tag.to === h.id, '邀约应发给玩家（小股东）');
+  const fair = o2.tag.price;
+  /* ④ 我接受 ⇒ 走 _decideOffer（真实入口，不是直接调 _settleTag） */
+  const r = g._decideOffer(h, o2.tag.i, true);
+  assert(r.ok, '接受随售应成交：' + r.msg);
+  assert(o2.tag.status === 'accepted', 'tag 邀约状态应为 accepted');
+  assert(seller.cash > sellerCash0, '卖方**公司账**应收到钱（同一条口径，不进老板口袋）');
+  /* ⚠ 我是**小股东/卖方** ⇒ 我的 stakes 里这家应被划走；`via:'tag'` 那条记在**买方**名下。
+     我第一版在两个对象上搞反了（去查自己 stakes 里有没有 via:tag）。 */
+  assert(!(h.stakes || []).some(st => st.targetPid === seller.id), '我（小股东）的持股应被划走');
+  assert((buyer.stakes || []).some(st => st.targetPid === seller.id && st.via === 'tag'),
+    '买方 stakes 里应记录这笔 via:tag 的过户');
+  /* ⑤ 拒绝分支见下一个用例（另开一局）。 */
+});
+
+ok('我可以选择“留”：拒绝随售 ⇒ 状态 declined、持股一分不动', () => {
+  const g = mk('GG-SOC-S9B'), h = H(g), seller = others(g)[0], buyer = others(g)[1];
+  h.cash = 1e6; buyer.cash = 1e7; seller.cash = 1e6;
+  g.act(h.id, 'contact', { toPid: seller.id, kind: 'jv', give: 0.2 });
+  reply(g);
+  const o = npcBuyMyStake(g, buyer, seller, 0.55);
+  g._settleNew(seller, o, true);
+  assert(o.tag, '前提：应收到 tag 邀约');
+  const mine0 = (h.stakes || []).filter(st => st.targetPid === seller.id)
+    .reduce((a, st) => a + st.stake, 0);
+  g._decideOffer(h, o.tag.i, false);
+  const mine1 = (h.stakes || []).filter(st => st.targetPid === seller.id)
+    .reduce((a, st) => a + st.stake, 0);
+  near(mine1, mine0, 1e-9, '拒绝后持股必须一分不动');
+  assert(o.tag.status === 'declined', 'tag 邀约状态应为 declined');
+});
+
 console.log('\n' + (errs.length
   ? '❌ 共 ' + errs.length + ' 项失败：\n   - ' + errs.join('\n   - ')
-  : '✅ 全部通过（名录·名次·主动联系·转让与门槛 10 条不变量）'));
+  : '✅ 全部通过（名录·名次·主动联系·转让·门槛·随售 12 条不变量）'));
 process.exit(errs.length ? 1 : 0);
